@@ -1,0 +1,164 @@
+from typing import List, Optional
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.api.deps import get_current_user, require_roles
+from app.models.models import (
+    ClinicalInsight, Patient, Encounter, User, UserRole,
+    InsightReviewStatus, get_utc_now
+)
+from app.schemas.schemas import (
+    MedicationSafetyCheckRequest, MedicationSafetyCheckResponse,
+    DifferentialRequest, DifferentialResponse, InsightReviewRequest
+)
+from app.services.medication_safety import MedicationSafetyChecker
+from app.services.intelligence import IntelligenceService
+from app.services.audit import log_audit_event
+
+router = APIRouter(prefix="/intelligence", tags=["VITALIS INTELLIGENCE - Clinical Decision Support"])
+
+# ----------------- Medication Safety Check (Section 31.5) -----------------
+@router.post("/medication-safety-check", response_model=MedicationSafetyCheckResponse)
+def check_medication_safety(
+    check_in: MedicationSafetyCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR]))
+):
+    patient = db.query(Patient).filter(Patient.id == check_in.patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+
+    result = MedicationSafetyChecker.check_medication_safety(
+        proposed_meds=check_in.proposed_medications,
+        patient_allergies=patient.allergies or [],
+        current_medications=patient.current_medications or [],
+        patient_conditions=patient.chronic_conditions or []
+    )
+
+    log_audit_event(
+        db,
+        action="MEDICATION_SAFETY_CHECK_RUN",
+        resource_type="medication_check",
+        actor_id=current_user.id,
+        patient_id=patient.id,
+        metadata={"proposed": check_in.proposed_medications, "is_safe": result["is_safe_to_proceed"]}
+    )
+
+    return MedicationSafetyCheckResponse(
+        patient_id=patient.id,
+        proposed_medications=check_in.proposed_medications,
+        allergy_conflicts=result["allergy_conflicts"],
+        drug_interactions=result["drug_interactions"],
+        contraindications_and_warnings=result["contraindications_and_warnings"],
+        is_safe_to_proceed=result["is_safe_to_proceed"],
+        reference_source=result["reference_source"],
+        disclaimer=result["disclaimer"]
+    )
+
+# ----------------- Differential Decision Support (Section 31.2 & 31.3) -----------------
+@router.post("/encounters/{encounter_id}/differential", response_model=DifferentialResponse)
+def generate_encounter_differential(
+    encounter_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR]))
+):
+    encounter = db.query(Encounter).filter(Encounter.id == encounter_id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+
+    patient = encounter.patient
+    vitals = encounter.nursing_observations
+    family_hist = patient.family_history
+
+    analysis = IntelligenceService.generate_encounter_differential(
+        encounter=encounter,
+        patient=patient,
+        vitals=vitals,
+        family_history=family_hist
+    )
+
+    # Persist as a ClinicalInsight for audit and clinician acceptance tracking
+    insight = ClinicalInsight(
+        patient_id=patient.id,
+        encounter_id=encounter.id,
+        insight_type="differential",
+        title="AI-Assisted Differential Considerations & Findings Summary",
+        content=analysis["summary_of_findings"],
+        supporting_evidence=analysis["supporting_evidence"],
+        conflicting_evidence=analysis["conflicting_evidence"],
+        missing_data=analysis["missing_data_recommendations"],
+        model_version=analysis["model_version"],
+        safety_disclaimer=analysis["safety_disclaimer"],
+        review_status=InsightReviewStatus.PENDING
+    )
+    db.add(insight)
+    db.commit()
+
+    log_audit_event(
+        db,
+        action="INTELLIGENCE_DIFFERENTIAL_GENERATED",
+        resource_type="clinical_insight",
+        resource_id=insight.id,
+        actor_id=current_user.id,
+        patient_id=patient.id,
+        encounter_id=encounter.id,
+        metadata={"model_version": analysis["model_version"]}
+    )
+
+    return DifferentialResponse(
+        encounter_id=encounter.id,
+        patient_id=patient.id,
+        summary_of_findings=analysis["summary_of_findings"],
+        red_flags_detected=analysis["red_flags_detected"],
+        possible_differentials=analysis["possible_differentials"],
+        supporting_evidence=analysis["supporting_evidence"],
+        conflicting_evidence=analysis["conflicting_evidence"],
+        missing_data_recommendations=analysis["missing_data_recommendations"],
+        model_version=analysis["model_version"],
+        safety_disclaimer=analysis["safety_disclaimer"]
+    )
+
+# ----------------- Clinician Review & Disposition of AI Draft (Section 31.3 & 33.1) -----------------
+@router.post("/insights/{id}/review")
+def review_clinical_insight(
+    id: str,
+    review_in: InsightReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR]))
+):
+    """
+    Clinician must explicitly accept, edit, or reject AI-generated drafts.
+    Unaccepted AI output never automatically becomes part of signed documentation.
+    """
+    insight = db.query(ClinicalInsight).filter(ClinicalInsight.id == id).first()
+    if not insight:
+        raise HTTPException(status_code=404, detail="Clinical insight not found")
+
+    insight.review_status = review_in.action
+    insight.reviewed_by_id = current_user.id
+    insight.reviewed_at = get_utc_now()
+    insight.clinician_action_rationale = review_in.rationale
+    if review_in.edited_content:
+        insight.content = review_in.edited_content
+
+    db.commit()
+
+    log_audit_event(
+        db,
+        action=f"AI_INSIGHT_{review_in.action.value.upper()}",
+        resource_type="clinical_insight",
+        resource_id=insight.id,
+        actor_id=current_user.id,
+        patient_id=insight.patient_id,
+        encounter_id=insight.encounter_id,
+        metadata={"rationale": review_in.rationale}
+    )
+
+    return {
+        "status": "success",
+        "message": f"Insight reviewed with action: {review_in.action.value}",
+        "insight_id": insight.id,
+        "review_status": insight.review_status.value
+    }
+
