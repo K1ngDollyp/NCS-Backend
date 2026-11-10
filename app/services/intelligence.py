@@ -1,7 +1,9 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from app.core.config import settings
 from app.models.models import Patient, Encounter, NursingObservation, ClinicalNote, FamilyHistoryEntry
 from app.engines.triage.rules import RED_FLAGS
+from app.services.ncs_model_adapter import NCSModelAdapter
 
 class IntelligenceService:
     """
@@ -94,6 +96,49 @@ class IntelligenceService:
         # Example Clinical Pattern 3: Hypertensive Urgency / Cardiovascular Risk
         sbp = next((v.value for v in vitals if v.observation_type == "systolic_bp"), None)
         dbp = next((v.value for v in vitals if v.observation_type == "diastolic_bp"), None)
+        pulse = next((v.value for v in vitals if v.observation_type == "pulse_rate"), 75.0)
+
+        # Connect NCS ML Heart Disease Model when cardiovascular symptoms or elevated BP present
+        has_cardio_complaint = any(term in complaint_lower for term in ["chest", "heart", "palpitation", "breath", "dizzy", "angina"])
+        if settings.ENABLE_NCS_ML_MODEL and (has_cardio_complaint or (sbp and sbp >= 140)):
+            try:
+                # Derive age
+                birth_year = int(patient.dob.split("-")[0]) if patient.dob else 1980
+                age = max(1, datetime.now().year - birth_year)
+                sex = 1 if patient.gender.lower() == "male" else 0
+                
+                # Format features for NCS Heart Disease pipeline
+                ml_features = {
+                    "age": age,
+                    "sex": sex,
+                    "cp": 2 if "chest pain" in complaint_lower else 0,
+                    "trestbps": float(sbp) if sbp else 125.0,
+                    "chol": 210.0,
+                    "fbs": 0,
+                    "restecg": 1 if (sbp and sbp > 150) else 0,
+                    "thalach": float(pulse) if pulse else 150.0,
+                    "exang": 1 if "exertion" in complaint_lower else 0,
+                    "oldpeak": 1.2 if "chest" in complaint_lower else 0.5,
+                    "slope": 2,
+                    "ca": 0,
+                    "thal": 2
+                }
+                heart_ml_res = NCSModelAdapter.predict_heart_disease(ml_features)
+                if heart_ml_res["prediction"] == 1:
+                    differentials.insert(0, {
+                        "condition": "Ischemic Heart Disease / Coronary Artery Disease (NCS ML Risk Model)",
+                        "ranking": 1,
+                        "confidence_signal": f"NCS ML Model: Risk Probability {heart_ml_res['probability']*100:.1f}% ({heart_ml_res['diagnosis']})",
+                        "suggested_tests": ["12-Lead Electrocardiogram (ECG)", "Serum Cardiac Troponin I", "Echocardiogram", "Lipid Profile"]
+                    })
+                    supporting_evidence.append(
+                        f"NCS ML Pipeline prediction: {heart_ml_res['diagnosis']} "
+                        f"(Probability: {heart_ml_res['probability']*100:.1f}% based on age {age}, BP {sbp or 'N/A'}, heart rate {pulse})."
+                    )
+            except Exception as e:
+                # Fallback safely if features or pipeline cannot run
+                pass
+
         if sbp and sbp >= 160 or (dbp and dbp >= 100):
             differentials.append({
                 "condition": "Hypertensive Urgency / Stage 2 Essential Hypertension",

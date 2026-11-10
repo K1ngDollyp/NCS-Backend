@@ -425,3 +425,41 @@ class InsightReviewRequest(BaseModel):
     rationale: Optional[str] = None
     edited_content: Optional[str] = None
 
+# ----------------- NCS ML Model Schemas -----------------
+class HeartDiseaseMLInput(BaseModel):
+    age: int = Field(..., ge=1, le=120, description="Age in years")
+    sex: int = Field(..., ge=0, le=1, description="1 = Male, 0 = Female")
+    cp: int = Field(..., ge=0, le=3, description="Chest pain type (0: typical angina, 1: atypical, 2: non-anginal, 3: asymptomatic)")
+    trestbps: float = Field(..., ge=50, le=250, description="Resting blood pressure (mmHg)")
+    chol: float = Field(..., ge=50, le=600, description="Serum cholesterol (mg/dl)")
+    fbs: int = Field(..., ge=0, le=1, description="Fasting blood sugar > 120 mg/dl (1 = true, 0 = false)")
+    restecg: int = Field(..., ge=0, le=2, description="Resting ECG results (0, 1, 2)")
+    thalach: float = Field(..., ge=40, le=250, description="Maximum heart rate achieved")
+    exang: int = Field(..., ge=0, le=1, description="Exercise induced angina (1 = yes, 0 = no)")
+    oldpeak: float = Field(..., ge=0.0, le=10.0, description="ST depression induced by exercise relative to rest")
+    slope: int = Field(..., ge=0, le=2, description="Slope of the peak exercise ST segment")
+    ca: int = Field(..., ge=0, le=4, description="Number of major vessels colored by fluoroscopy (0-3)")
+    thal: int = Field(..., ge=0, le=3, description="Thalassemia (1 = normal; 2 = fixed defect; 3 = reversable defect)")
+
+class DiabetesMLInput(BaseModel):
+    Pregnancies: int = Field(0, ge=0, description="Number of pregnancies")
+    Glucose: float = Field(..., ge=0, le=500, description="Plasma glucose concentration a 2 hours in an oral glucose tolerance test")
+    BloodPressure: float = Field(..., ge=0, le=250, description="Diastolic blood pressure (mm Hg)")
+    SkinThickness: float = Field(0.0, ge=0, le=100, description="Triceps skin fold thickness (mm)")
+    Insulin: float = Field(0.0, ge=0, le=1000, description="2-Hour serum insulin (mu U/ml)")
+    BMI: float = Field(..., ge=10, le=80, description="Body mass index (weight in kg/(height in m)^2)")
+    DiabetesPedigreeFunction: float = Field(0.5, ge=0.0, le=3.0, description="Diabetes pedigree function")
+    Age: int = Field(..., ge=1, le=120, description="Age in years")
+
+class MLPredictionResponse(BaseModel):
+    prediction: int
+    probability: float
+    diagnosis: str
+    model_version: str
+    clinical_significance: str
+    safety_disclaimer: str = (
+        "AI/ML decision support output only. Clinician review, independent evaluation, "
+        "and diagnostic verification are required. Does not replace clinical judgment."
+    )
+
+

@@ -10,10 +10,12 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     MedicationSafetyCheckRequest, MedicationSafetyCheckResponse,
-    DifferentialRequest, DifferentialResponse, InsightReviewRequest
+    DifferentialRequest, DifferentialResponse, InsightReviewRequest,
+    HeartDiseaseMLInput, DiabetesMLInput, MLPredictionResponse
 )
 from app.services.medication_safety import MedicationSafetyChecker
 from app.services.intelligence import IntelligenceService
+from app.services.ncs_model_adapter import NCSModelAdapter
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/intelligence", tags=["VITALIS INTELLIGENCE - Clinical Decision Support"])
@@ -161,4 +163,82 @@ def review_clinical_insight(
         "insight_id": insight.id,
         "review_status": insight.review_status.value
     }
+
+# ----------------- NCS ML Model Dedicated Endpoints -----------------
+@router.post("/ml/predict-heart-disease", response_model=MLPredictionResponse)
+def predict_heart_disease_ml(
+    input_data: HeartDiseaseMLInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.NURSE, UserRole.FACILITY_ADMIN]))
+):
+    """
+    Executes inference via the NCS Model (heart_disease_prediction_pipeline.joblib).
+    Does NOT modify the model folder; runs via NCSModelAdapter.
+    """
+    try:
+        result = NCSModelAdapter.predict_heart_disease(input_data.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing NCS Heart Disease Pipeline: {str(e)}"
+        )
+
+    log_audit_event(
+        db,
+        action="NCS_ML_HEART_PREDICTION_EXECUTED",
+        resource_type="ml_prediction",
+        actor_id=current_user.id,
+        metadata={
+            "prediction": result["prediction"],
+            "probability": result["probability"],
+            "model_version": result["model_version"]
+        }
+    )
+
+    return MLPredictionResponse(
+        prediction=result["prediction"],
+        probability=result["probability"],
+        diagnosis=result["diagnosis"],
+        model_version=result["model_version"],
+        clinical_significance=result["clinical_significance"]
+    )
+
+@router.post("/ml/predict-diabetes", response_model=MLPredictionResponse)
+def predict_diabetes_ml(
+    input_data: DiabetesMLInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.NURSE, UserRole.FACILITY_ADMIN]))
+):
+    """
+    Executes inference via the NCS Model (diabetes_prediction_pipeline.joblib).
+    Does NOT modify the model folder; runs via NCSModelAdapter.
+    """
+    try:
+        result = NCSModelAdapter.predict_diabetes(input_data.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing NCS Diabetes Pipeline: {str(e)}"
+        )
+
+    log_audit_event(
+        db,
+        action="NCS_ML_DIABETES_PREDICTION_EXECUTED",
+        resource_type="ml_prediction",
+        actor_id=current_user.id,
+        metadata={
+            "prediction": result["prediction"],
+            "probability": result["probability"],
+            "model_version": result["model_version"]
+        }
+    )
+
+    return MLPredictionResponse(
+        prediction=result["prediction"],
+        probability=result["probability"],
+        diagnosis=result["diagnosis"],
+        model_version=result["model_version"],
+        clinical_significance=result["clinical_significance"]
+    )
+
 

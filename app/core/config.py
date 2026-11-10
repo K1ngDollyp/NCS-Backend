@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     ]
     
     # Prototype model settings (mock / heuristic engine for now, ready for external ML model plug)
-    MODEL_PROVIDER: str = "internal-rules-heuristics"
+    MODEL_PROVIDER: str = "ncs-ml-model"
+    NCS_MODEL_DIR: str = "ml_model/model_dir"
+    ENABLE_NCS_ML_MODEL: bool = True
     
     model_config = SettingsConfigDict(
         env_file=".env",

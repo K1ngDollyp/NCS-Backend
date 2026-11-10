@@ -263,3 +263,58 @@ def test_inter_hospital_transfer_workflow():
     assert red_data["status"] == "success"
     assert "package_payload" in red_data
 
+def test_ncs_model_integration_heart_and_diabetes():
+    """Verify clean read-only integration of the NCS ML Model pipelines"""
+    doc_token = get_auth_token("doctor@fmc.vitalis.ng")
+
+    # 1. Test Heart Disease Pipeline Endpoint
+    heart_payload = {
+        "age": 52,
+        "sex": 1,
+        "cp": 0,
+        "trestbps": 125.0,
+        "chol": 212.0,
+        "fbs": 0,
+        "restecg": 1,
+        "thalach": 168.0,
+        "exang": 0,
+        "oldpeak": 1.0,
+        "slope": 2,
+        "ca": 0,
+        "thal": 2
+    }
+    res_heart = client.post(
+        "/api/v1/intelligence/ml/predict-heart-disease",
+        json=heart_payload,
+        headers={"Authorization": f"Bearer {doc_token}"}
+    )
+    assert res_heart.status_code == 200
+    heart_data = res_heart.json()
+    assert heart_data["prediction"] in [0, 1]
+    assert 0.0 <= heart_data["probability"] <= 1.0
+    assert "NCS-RandomForestClassifier-HeartV1" in heart_data["model_version"]
+    assert "safety_disclaimer" in heart_data
+
+    # 2. Test Diabetes Pipeline Endpoint
+    diabetes_payload = {
+        "Pregnancies": 2,
+        "Glucose": 148.0,
+        "BloodPressure": 72.0,
+        "SkinThickness": 35.0,
+        "Insulin": 0.0,
+        "BMI": 33.6,
+        "DiabetesPedigreeFunction": 0.627,
+        "Age": 50
+    }
+    res_diab = client.post(
+        "/api/v1/intelligence/ml/predict-diabetes",
+        json=diabetes_payload,
+        headers={"Authorization": f"Bearer {doc_token}"}
+    )
+    assert res_diab.status_code == 200
+    diab_data = res_diab.json()
+    assert diab_data["prediction"] in [0, 1]
+    assert 0.0 <= diab_data["probability"] <= 1.0
+    assert "NCS-SVC-DiabetesV1" in diab_data["model_version"]
+
+
