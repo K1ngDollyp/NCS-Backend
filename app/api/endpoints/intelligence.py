@@ -20,7 +20,7 @@ from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/intelligence", tags=["VITALIS INTELLIGENCE - Clinical Decision Support"])
 
-# ----------------- Medication Safety Check (Section 31.5) -----------------
+# ----------------- Medication Safety Check -----------------
 @router.post("/medication-safety-check", response_model=MedicationSafetyCheckResponse)
 def check_medication_safety(
     check_in: MedicationSafetyCheckRequest,
@@ -58,7 +58,7 @@ def check_medication_safety(
         disclaimer=result["disclaimer"]
     )
 
-# ----------------- Differential Decision Support (Section 31.2 & 31.3) -----------------
+# ----------------- Differential Decision Support -----------------
 @router.post("/encounters/{encounter_id}/differential", response_model=DifferentialResponse)
 def generate_encounter_differential(
     encounter_id: str,
@@ -121,7 +121,7 @@ def generate_encounter_differential(
         safety_disclaimer=analysis["safety_disclaimer"]
     )
 
-# ----------------- Clinician Review & Disposition of AI Draft (Section 31.3 & 33.1) -----------------
+# ----------------- Clinician Review & Disposition of Findings -----------------
 @router.post("/insights/{id}/review")
 def review_clinical_insight(
     id: str,

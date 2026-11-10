@@ -7,7 +7,7 @@ from app.services.ncs_model_adapter import NCSModelAdapter
 
 class IntelligenceService:
     """
-    VITALIS INTELLIGENCE Service (Section 31 & 33)
+    Clinical Decision Support Service.
     Analyzes longitudinal patient record:
       - Current presentation & vitals
       - Past encounters & verified investigations
@@ -157,7 +157,7 @@ class IntelligenceService:
                 "suggested_tests": ["Full Blood Count (FBC)", "Basic Metabolic Panel", "Urinalysis"]
             })
 
-        # Family History & Genetic Signals (Section 31.4 & 33.1)
+        # Family History & Genetic Signals
         for fh in family_history:
             fh_cond = fh.condition.lower()
             if "diabetes" in fh_cond:
@@ -192,7 +192,7 @@ class IntelligenceService:
             "missing_data_recommendations": missing_data,
             "model_version": "VITALIS-INTELLIGENCE-V1.4-CLINICAL-DRAFT",
             "safety_disclaimer": (
-                "AI-generated draft for clinical decision support only. Clinician review, "
+                "Draft for clinical decision support only. Clinician review, "
                 "independent physical examination, and diagnostic verification are strictly required. "
                 "This software does not prescribe or establish an autonomous diagnosis."
             )

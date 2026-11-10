@@ -13,8 +13,8 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
 
 class FacilityMatcher:
     """
-    VITALIS ROUTE Engine (Section 12)
-    Prototype suitability formula:
+    Facility Matching Engine.
+    Suitability formula:
     S = 0.40 * C + 0.25 * A + 0.20 * D + 0.15 * V
     Where:
       C = Service compatibility (0-100)
@@ -57,7 +57,7 @@ class FacilityMatcher:
                     last_confirmed = s.get("last_confirmed_at")
                     break
 
-            # Hard eligibility filter: Exclude facilities missing an essential service requirement (Section 12)
+            # If essential service not supported, exclude facility
             if not has_service:
                 return None
             c_score = 100.0

@@ -347,7 +347,7 @@ class ConsentCreate(BaseModel):
     grantee_facility_id: Optional[str] = None
     scope: List[str] = ["vitals", "allergies", "medications", "lab_results", "notes"]
     purpose: str = "Clinical Consultation & Care Continuity"
-    duration_minutes: int = 10  # 5-10 minutes prototype grant
+    duration_minutes: int = 15
 
 class QRGrantResponse(BaseModel):
     grant_id: str
@@ -458,7 +458,7 @@ class MLPredictionResponse(BaseModel):
     model_version: str
     clinical_significance: str
     safety_disclaimer: str = (
-        "AI/ML decision support output only. Clinician review, independent evaluation, "
+        "Clinical decision support output only. Clinician review, independent evaluation, "
         "and diagnostic verification are required. Does not replace clinical judgment."
     )
 

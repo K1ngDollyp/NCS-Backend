@@ -502,7 +502,7 @@ class ClinicalInsight(Base):
     model_version = Column(String(50), default="VITALIS-INTELLIGENCE-V1-DRAFT")
     safety_disclaimer = Column(
         String(255), 
-        default="AI-generated draft — clinician review required. Not an autonomous diagnosis or prescription."
+        default="Decision support draft — clinician review required. Not an autonomous diagnosis or prescription."
     )
     review_status = Column(SQLEnum(InsightReviewStatus), default=InsightReviewStatus.PENDING)
     reviewed_by_id = Column(String(36), ForeignKey("users.id"), nullable=True)

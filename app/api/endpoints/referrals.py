@@ -80,7 +80,7 @@ def get_facility_referrals_queue(
         UserRole.RECEPTION, UserRole.DOCTOR, UserRole.FACILITY_ADMIN
     ]))
 ):
-    """Destination facility referral work queue (Section 6 & 14)"""
+    """Destination facility incoming referral queue"""
     return db.query(Referral).filter(
         Referral.destination_facility_id == facility_id
     ).order_by(Referral.created_at.desc()).all()
@@ -94,7 +94,7 @@ def update_referral_status(
         UserRole.RECEPTION, UserRole.DOCTOR, UserRole.FACILITY_ADMIN
     ]))
 ):
-    """Accept, reject or request more info for an incoming referral (Section 14)"""
+    """Accept, reject or request more info for an incoming referral"""
     referral = db.query(Referral).filter(Referral.id == id).first()
     if not referral:
         raise HTTPException(status_code=404, detail="Referral not found")

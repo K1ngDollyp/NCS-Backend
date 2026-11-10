@@ -38,7 +38,7 @@ def initiate_transfer(
 
     transfer_num = f"TRF-2026-{random.randint(10000, 99999)}"
 
-    # Assemble portable structured transfer package (Section 32.3)
+    # Assemble structured transfer package manifest
     package_manifest = {
         "manifest_version": "VITALIS-PORTABLE-HEALTH-PACKAGE-1.0",
         "created_at": get_utc_now().isoformat(),
@@ -97,7 +97,7 @@ def initiate_transfer(
 
     return transfer
 
-# ----------------- 2. Patient / Representative Consent (Section 32.2) -----------------
+# ----------------- Patient Consent -----------------
 @router.post("/{id}/consent", response_model=TransferResponse)
 def record_transfer_consent(
     id: str,
@@ -125,7 +125,7 @@ def record_transfer_consent(
 
     return transfer
 
-# ----------------- 3. Send / Publish Transfer with One-Time Token (Section 32.2) -----------------
+# ----------------- Dispatch Transfer Package -----------------
 @router.post("/{id}/send")
 def send_transfer_package(
     id: str,
@@ -175,8 +175,7 @@ def redeem_transfer_package(
     ]))
 ):
     """
-    Receiving Hospital B authenticates and redeems the transfer token.
-    Section 32.4: Creates a local copy / view without overwriting Hospital A's original records.
+    Receiving facility redeems transfer token and imports records into local view.
     """
     token_hashed = hash_token(redeem_in.transfer_token)
     transfer = db.query(RecordTransfer).filter(RecordTransfer.access_token_hash == token_hashed).first()

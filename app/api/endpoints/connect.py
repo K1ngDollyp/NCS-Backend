@@ -47,8 +47,7 @@ def create_qr_access_grant(
     db.commit()
     db.refresh(consent)
 
-    # Section 13: QR code must NEVER contain medical history or patient PII.
-    # It carries a high-entropy random single-use token; server stores only the SHA-256 hash.
+    # Secure token generation: store only SHA-256 hash server-side
     raw_token = generate_random_token(32)
     token_hashed = hash_token(raw_token)
 

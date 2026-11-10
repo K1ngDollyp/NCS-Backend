@@ -25,10 +25,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 def generate_random_token(length: int = 32) -> str:
-    """Generate high-entropy cryptographically safe token for QR grants"""
+    """Generate high-entropy token for temporary QR grants"""
     return secrets.token_urlsafe(length)
 
 def hash_token(token: str) -> str:
-    """Store only cryptographic hash of token server-side (Section 13)"""
+    """Store only cryptographic hash of token in database"""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 

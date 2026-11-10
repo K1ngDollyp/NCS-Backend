@@ -28,9 +28,8 @@ def match_facilities(
     db: Session = Depends(get_db)
 ):
     """
-    VITALIS ROUTE algorithm:
-    Applies hard eligibility filters, then computes prototype suitability score:
-    S = 0.40C + 0.25A + 0.20D + 0.15V
+    Facility matching algorithm:
+    Applies eligibility filters, then computes multi-factor suitability score.
     """
     facilities = db.query(Facility).all()
     results = []

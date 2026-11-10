@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 
 # Verified medication safety reference knowledge base
-# Used by VITALIS INTELLIGENCE for prototype medication safety checks (Section 31.5)
+# Used for pre-prescription allergy and interaction checks
 KNOWN_ALLERGIES_MAP = {
     "penicillin": ["amoxicillin", "ampicillin", "augmentin", "co-amoxiclav", "piperacillin"],
     "sulfa": ["co-trimoxazole", "bactrim", "septrin", "sulfamethoxazole"],

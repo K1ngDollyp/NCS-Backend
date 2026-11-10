@@ -16,8 +16,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="""
-    VITALIS - The Intelligent Healthcare Coordination Network API
-    Competition Prototype & Production Foundation (ITDC 2026).
+    VITALIS - Healthcare Coordination Network API.
     Coordinating Reception, Nursing, Doctor, and Diagnostics with Clinical Decision Support & Inter-Hospital Record Exchange.
     """,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",

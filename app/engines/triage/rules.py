@@ -1,8 +1,7 @@
 from typing import List, Dict, Any, Tuple
 
-# Deterministic Red-Flag triggers (Sections 11 & 31.6)
-# Emergency warning signs trigger clear advice to seek immediate emergency care
-# and must never wait for or be overridden by an AI response.
+# Deterministic Emergency Red-Flag triggers
+# Evaluated immediately to prevent triage delays
 RED_FLAGS = [
     {
         "keywords": ["chest pain", "tightness in chest", "pressure in chest", "radiating to arm", "radiating to jaw"],
@@ -112,8 +111,8 @@ class TriageEngine:
             "Routine clinical consultation recommended. No acute emergency red flags identified at intake."
         )
 
-# Clinician vital sign warning thresholds (Section 5.2)
-# Configurable, clinician-reviewed warning thresholds
+# Clinician vital sign warning thresholds
+# Triggers alerts on the nursing triage station
 VITAL_WARNING_THRESHOLDS = {
     "systolic_bp": {"min": 90, "max": 140, "unit": "mmHg", "label": "Systolic Blood Pressure"},
     "diastolic_bp": {"min": 60, "max": 90, "unit": "mmHg", "label": "Diastolic Blood Pressure"},

@@ -122,7 +122,7 @@ def get_patient_by_id(
         
     return patient
 
-# Family History Endpoints (Section 31.4 & 33.2)
+# Family History Endpoints
 @router.post("/{patient_id}/family-history", response_model=FamilyHistoryResponse)
 def add_family_history(
     patient_id: str,

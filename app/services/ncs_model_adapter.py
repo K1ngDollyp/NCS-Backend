@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from app.core.config import settings
 
-# Register pickle unpickling shim for diabetes pipeline without modifying NCS Model folder
+# Custom unpickler shim for diabetes preprocessing pipeline
 if "src.common.preprocessing_util" not in sys.modules:
     src_mod = types.ModuleType("src")
     src_common = types.ModuleType("src.common")
@@ -20,8 +20,8 @@ if "src.common.preprocessing_util" not in sys.modules:
 
 class NCSModelAdapter:
     """
-    Read-Only Integration Adapter for the NCS Model (Model-Health-Care).
-    Loads pre-trained pipelines directly from their source folder without modifying any files.
+    Adapter for trained ML risk prediction pipelines.
+    Handles feature validation, DataFrame construction, and inference.
     """
     _heart_pipeline = None
     _diabetes_pipeline = None

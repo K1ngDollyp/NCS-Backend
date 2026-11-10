@@ -19,7 +19,7 @@ def init_db_and_seed(db: Session):
         print("Database already contains data, skipping seed.")
         return
 
-    print("Seeding initial synthetic competition demo dataset...")
+    print("Seeding initial demo dataset...")
 
     # 1. Facilities in Abeokuta, Ogun State
     fac1 = Facility(
@@ -154,7 +154,7 @@ def init_db_and_seed(db: Session):
 
     db.commit()
 
-    # 5. Synthetic Patient: Olumide Adeleke (With realistic Nigerian clinical context)
+    # 5. Patient profile
     u_pat = User(email="olumide@example.com", phone="+234-803-123-4567", password_hash=pw_hash, role=UserRole.PATIENT, full_name="Olumide Adeleke")
     db.add(u_pat)
     db.commit()
@@ -199,7 +199,7 @@ def init_db_and_seed(db: Session):
     db.add_all([fh1, fh2])
     db.commit()
 
-    print("Synthetic competition dataset seeded successfully!")
+    print("Demo dataset seeded successfully!")
 
 if __name__ == "__main__":
     db = SessionLocal()

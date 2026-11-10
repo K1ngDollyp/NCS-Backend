@@ -80,7 +80,7 @@ def get_diagnostics_work_queue(
 
     return [format_order(o) for o in orders]
 
-# ----------------- Status Transitions (Section 5.4 & 14) -----------------
+# ----------------- Status Transitions -----------------
 @router.patch("/orders/{id}/status", response_model=InvestigationOrderResponse)
 def update_order_status(
     id: str,

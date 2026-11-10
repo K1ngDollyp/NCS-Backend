@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     # Environment & Security
     SECRET_KEY: str = "vitalis-super-secret-key-change-in-production-2026-itdc"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day for prototype ease
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     
-    # Database (Default to SQLite file if PostgreSQL not provided)
+    # Database
     DATABASE_URL: str = "sqlite:///./vitalis.db"
     
     # CORS
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         "*"
     ]
     
-    # Prototype model settings (mock / heuristic engine for now, ready for external ML model plug)
+    # ML & Decision Support settings
     MODEL_PROVIDER: str = "ncs-ml-model"
     NCS_MODEL_DIR: str = "ml_model/model_dir"
     ENABLE_NCS_ML_MODEL: bool = True

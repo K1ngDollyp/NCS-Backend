@@ -103,8 +103,7 @@ def open_encounter(
 
     enc_num = f"ENC-{facility.facility_code}-{datetime.now().strftime('%y%m%d')}-{random.randint(100, 999)}"
     
-    # Emergency bypass support (Section 5.1 & 5.5)
-    # If flagged emergency, route directly to urgent priority
+    # Priority escalation for emergency walk-ins
     priority = encounter_in.priority
     if encounter_in.is_emergency_flag:
         priority = EncounterPriority.EMERGENCY
