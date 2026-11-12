@@ -241,3 +241,69 @@ def predict_diabetes_ml(
         clinical_significance=result["clinical_significance"]
     )
 
+
+
+
+# ----------------- VITALIS AI: Longitudinal Clinical Assessment -----------------
+@router.post("/encounters/{encounter_id}/assessment")
+def generate_clinical_assessment(
+    encounter_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR]))
+):
+    """
+    Full VITALIS AI assessment for the current encounter: combines today's vitals and complaint
+    with the patient's authorised network history, runs the trained NCS ML models and screens
+    treatment options against documented allergies/medications. Persisted as a ClinicalInsight
+    that the clinician must accept, edit or reject.
+    """
+    from app.services.clinical_ai import VitalisClinicalAI
+    from app.services.record_access import resolve_access, visible_encounters
+
+    encounter = db.query(Encounter).filter(Encounter.id == encounter_id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+    patient = encounter.patient
+
+    access = resolve_access(db, current_user, patient)
+    visible = visible_encounters(patient, access)
+    if encounter not in visible:
+        visible = visible + [encounter]
+
+    result = VitalisClinicalAI(patient, encounter, visible).assess()
+
+    top = result["conditions"][0]["condition"] if result["conditions"] else "No specific pattern"
+    insight = ClinicalInsight(
+        patient_id=patient.id,
+        encounter_id=encounter.id,
+        insight_type="longitudinal_assessment",
+        title=f"VITALIS AI assessment — {top}",
+        content=result["summary"],
+        supporting_evidence=[e["text"] for c in result["conditions"] for e in c.get("evidence", [])][:30],
+        conflicting_evidence=[e["text"] for c in result["conditions"] for e in c.get("against", [])][:15],
+        missing_data=result["missing_data"],
+        model_version=result["model_version"][:50],
+        safety_disclaimer=result["safety_disclaimer"][:255],
+        review_status=InsightReviewStatus.PENDING
+    )
+    db.add(insight)
+    db.commit()
+    db.refresh(insight)
+
+    log_audit_event(
+        db,
+        action="INTELLIGENCE_ASSESSMENT_GENERATED",
+        resource_type="clinical_insight",
+        resource_id=insight.id,
+        actor_id=current_user.id,
+        patient_id=patient.id,
+        encounter_id=encounter.id,
+        metadata={
+            "model_version": result["model_version"],
+            "access_level": access["level"],
+            "prior_encounters": result["data_coverage"]["prior_encounters"],
+            "conditions": [c["condition"] for c in result["conditions"]],
+        }
+    )
+
+    return {"insight_id": insight.id, "encounter_id": encounter.id, "patient_id": patient.id, **result}

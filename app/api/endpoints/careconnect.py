@@ -1,8 +1,10 @@
+import copy
 import random
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import get_db
 from app.core.security import generate_random_token, hash_token
 from app.api.deps import get_current_user, require_roles
@@ -1116,13 +1118,15 @@ def respond_to_emergency_confirmation(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
 
-    candidates = list(em_req.candidate_facilities or [])
+    # Deep copy: the JSON column must see a new value or the per-hospital states are never saved
+    candidates = copy.deepcopy(em_req.candidate_facilities or [])
 
     if confirm_in.accepted:
         for c in candidates:
             if c.get("facility_id") == facility.id:
                 c["confirmation_state"] = "accepted"
         em_req.candidate_facilities = candidates
+        flag_modified(em_req, "candidate_facilities")
         em_req.confirmed_facility_id = facility.id
         em_req.status = EmergencyRequestStatus.TRANSPORT_COORDINATED
 
@@ -1184,6 +1188,7 @@ def respond_to_emergency_confirmation(
                 next_candidate = c
 
         em_req.candidate_facilities = candidates
+        flag_modified(em_req, "candidate_facilities")
         db.add(EmergencyEvent(
             emergency_request_id=em_req.id,
             event_type="HOSPITAL_DECLINED",

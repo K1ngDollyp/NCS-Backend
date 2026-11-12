@@ -1,0 +1,12 @@
+# Render blueprint: New + > Blueprint > pick this repo
+services:
+  - type: web
+    name: vitalis-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true

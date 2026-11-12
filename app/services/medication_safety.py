@@ -4,7 +4,9 @@ from typing import List, Dict, Any, Optional
 # Used for pre-prescription allergy and interaction checks
 KNOWN_ALLERGIES_MAP = {
     "penicillin": ["amoxicillin", "ampicillin", "augmentin", "co-amoxiclav", "piperacillin"],
-    "sulfa": ["co-trimoxazole", "bactrim", "septrin", "sulfamethoxazole"],
+    "sulfa": ["co-trimoxazole", "bactrim", "septrin", "sulfamethoxazole", "sulfadoxine", "hydrochlorothiazide", "chlorthalidone", "bendroflumethiazide", "indapamide", "furosemide"],
+    "sulfonamide": ["co-trimoxazole", "bactrim", "septrin", "sulfamethoxazole", "sulfadoxine", "hydrochlorothiazide", "chlorthalidone", "bendroflumethiazide", "indapamide", "furosemide"],
+    "co-trimoxazole": ["sulfamethoxazole", "septrin", "bactrim"],
     "aspirin": ["ibuprofen", "diclofenac", "naproxen", "ketorolac", "indomethacin"],  # NSAID cross-sensitivity
     "nsaids": ["aspirin", "ibuprofen", "diclofenac", "naproxen", "piroxicam"]
 }
@@ -27,6 +29,18 @@ KNOWN_DRUG_INTERACTIONS = [
         "drug_b": "spironolactone",
         "severity": "Moderate to Major",
         "detail": "Increased risk of severe hyperkalemia. Serum potassium monitoring is essential."
+    },
+    {
+        "drug_a": "amlodipine",
+        "drug_b": "simvastatin",
+        "severity": "Moderate",
+        "detail": "Amlodipine raises simvastatin exposure (myopathy risk). Limit simvastatin to 20 mg or prefer atorvastatin."
+    },
+    {
+        "drug_a": "lisinopril",
+        "drug_b": "potassium",
+        "severity": "Moderate",
+        "detail": "ACE inhibitor with potassium supplementation increases hyperkalaemia risk. Monitor serum potassium."
     },
     {
         "drug_a": "metformin",
@@ -63,16 +77,21 @@ class MedicationSafetyChecker:
                         "documented_allergy": allergy,
                         "warning": f"Direct allergy conflict: Patient has documented allergy to '{allergy}'."
                     })
-                # Cross-sensitivity check
-                elif allergy in KNOWN_ALLERGIES_MAP:
-                    derivatives = KNOWN_ALLERGIES_MAP[allergy]
-                    for d in derivatives:
-                        if d in prop:
-                            allergy_conflicts.append({
-                                "proposed_medication": prop,
-                                "documented_allergy": allergy,
-                                "warning": f"Cross-reactivity risk: '{prop}' belongs to or shares cross-sensitivity with '{allergy}'."
-                            })
+                # Cross-sensitivity check (allergy text may be descriptive, e.g. "Sulfonamides (Septrin)")
+                else:
+                    flagged = False
+                    for allergy_key, derivatives in KNOWN_ALLERGIES_MAP.items():
+                        if flagged or allergy_key not in allergy:
+                            continue
+                        for d in derivatives:
+                            if d in prop:
+                                allergy_conflicts.append({
+                                    "proposed_medication": prop,
+                                    "documented_allergy": allergy,
+                                    "warning": f"Cross-reactivity risk: '{prop}' belongs to or shares cross-sensitivity with '{allergy}'."
+                                })
+                                flagged = True
+                                break
 
         # Drug-Drug Interactions
         all_meds = proposed_clean + current_clean

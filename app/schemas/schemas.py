@@ -261,6 +261,11 @@ class InvestigationOrderResponse(BaseModel):
     completed_at: Optional[datetime]
     lab_result: Optional[Dict[str, Any]] = None
     radiology_report: Optional[Dict[str, Any]] = None
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_number: Optional[str] = None
+    facility_id: Optional[str] = None
+    ordered_by: Optional[str] = None
 
     class Config:
         from_attributes = True
