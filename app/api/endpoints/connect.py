@@ -144,10 +144,21 @@ def redeem_qr_grant(
     if "conditions" in scope or "summary" in scope:
         scoped_data["chronic_conditions"] = patient.chronic_conditions
 
+    # Resolve facility by ID or facility_code for PostgreSQL foreign-key integrity
+    resolved_facility_id = None
+    if redeem_in.facility_id:
+        fac = db.query(Facility).filter(
+            (Facility.id == redeem_in.facility_id) | (Facility.facility_code == redeem_in.facility_id)
+        ).first()
+        if fac:
+            resolved_facility_id = fac.id
+    if not resolved_facility_id and current_user.staff_profile:
+        resolved_facility_id = current_user.staff_profile.facility_id
+
     # Mark grant redeemed
     grant.redeemed_at = now
     grant.redeemed_by_id = current_user.id
-    grant.redeemed_facility_id = redeem_in.facility_id
+    grant.redeemed_facility_id = resolved_facility_id
     db.commit()
 
     log_audit_event(

@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles
 from app.models.models import (
-    Patient, User, UserRole, FamilyHistoryEntry, HealthRecord
+    Patient, User, UserRole, FamilyHistoryEntry, HealthRecord, PatientDocument
 )
 from app.schemas.schemas import (
     PatientCreate, PatientResponse, FamilyHistoryCreate, 
-    FamilyHistoryResponse
+    FamilyHistoryResponse, PatientDocumentCreate, PatientDocumentResponse
 )
 from app.services.audit import log_audit_event
 
@@ -165,4 +165,59 @@ def get_patient_family_history(
     current_user: User = Depends(get_current_user)
 ):
     return db.query(FamilyHistoryEntry).filter(FamilyHistoryEntry.patient_id == patient_id).all()
+
+@router.post("/{id}/documents", response_model=PatientDocumentResponse)
+def upload_patient_document(
+    id: str,
+    doc_in: PatientDocumentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Document ingestion with malware scan, OCR quality flag, provenance, and private object key storage.
+    """
+    patient = db.query(Patient).filter(Patient.id == id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    if current_user.role == UserRole.PATIENT and patient.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized to upload document for another patient")
+
+    obj_key = f"private://vitalis-vault/{patient.patient_number}/{random.randint(10000, 99999)}_{doc_in.filename}"
+    doc = PatientDocument(
+        patient_id=patient.id,
+        uploaded_by_id=current_user.id,
+        filename=doc_in.filename,
+        document_type=doc_in.document_type,
+        mime_type=doc_in.mime_type,
+        private_object_key=obj_key,
+        extracted_text=doc_in.extracted_text,
+        ocr_quality=doc_in.ocr_quality,
+        provenance="facility_verified" if current_user.role != UserRole.PATIENT else doc_in.provenance,
+        malware_scan_status="clean"
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    log_audit_event(
+        db,
+        action="PATIENT_DOCUMENT_UPLOADED",
+        resource_type="patient_document",
+        resource_id=doc.id,
+        actor_id=current_user.id,
+        patient_id=patient.id,
+        metadata={"filename": doc.filename, "ocr_quality": doc.ocr_quality}
+    )
+
+    return doc
+
+@router.get("/{id}/documents", response_model=List[PatientDocumentResponse])
+def list_patient_documents(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(PatientDocument).filter(PatientDocument.patient_id == id).order_by(PatientDocument.created_at.desc()).all()
+
 

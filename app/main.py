@@ -6,7 +6,7 @@ from app.core.database import engine, Base
 from app.api.endpoints import (
     auth, patients, encounters, diagnostics,
     triage, facilities, referrals, connect,
-    intelligence, transfers, admin
+    intelligence, transfers, admin, careconnect
 )
 
 # Initialize database schema tables
@@ -42,14 +42,23 @@ def root():
         "version": settings.VERSION,
         "docs_url": f"{settings.API_V1_STR}/docs",
         "departments": ["Reception", "Nursing", "Doctor", "Laboratory & Radiology"],
+        "careconnect_actions": [
+            "Talk to AI",
+            "Find a doctor",
+            "Home visit",
+            "Find a hospital",
+            "Emergency assistance"
+        ],
         "modules": [
-            "VITALIS AI Triage",
-            "VITALIS ROUTE (Facility Matching)",
+            "VITALIS CareConnect (Patient Access, AI Assistant, Telemedicine, Home Visits, Capability Search, Emergency Coordination)",
+            "VITALIS AI Triage & Doctor Clinical Assistant",
+            "VITALIS ROUTE (Capability & Facility Matching)",
             "VITALIS CONNECT (QR & Consent)",
             "VITALIS HOSPITAL (Encounters & Workflow)",
             "VITALIS REFERRAL",
             "VITALIS INTELLIGENCE (Decision Support)",
-            "VITALIS TRANSFER (Inter-Hospital Exchange)"
+            "VITALIS TRANSFER (Inter-Hospital Exchange)",
+            "VITALIS ADMIN"
         ]
     }
 
@@ -69,4 +78,5 @@ app.include_router(connect.router, prefix=settings.API_V1_STR)
 app.include_router(intelligence.router, prefix=settings.API_V1_STR)
 app.include_router(transfers.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
+app.include_router(careconnect.router, prefix=settings.API_V1_STR)
 

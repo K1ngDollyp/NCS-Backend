@@ -372,3 +372,266 @@ def test_admin_endpoints():
     assert "total_patients" in data
     assert "encounters_overview" in data
 
+
+# 13. CareConnect: Central Patient Dashboard & 5 Primary Actions
+def test_careconnect_dashboard_and_assistant():
+    pat_token = get_token("olumide@example.com")
+    pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
+
+    # Central Dashboard with 5 Primary Actions
+    dash = client.get("/api/v1/careconnect/dashboard", headers={"Authorization": f"Bearer {pat_token}"})
+    assert dash.status_code == 200
+    dash_data = dash.json()
+    titles = [a["title"] for a in dash_data["primary_actions"]]
+    assert titles == [
+        "Talk to AI",
+        "Find a doctor",
+        "Home visit",
+        "Find a hospital",
+        "Emergency assistance"
+    ]
+
+    # Action 1: Talk to AI (CareConnect Assistant)
+    conv_res = client.post("/api/v1/careconnect/assistant/conversations", json={
+        "patient_id": pid,
+        "modality": "text",
+        "history_access_permitted": True,
+        "initial_message": "I have had a mild headache and fatigue since yesterday"
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert conv_res.status_code == 200
+    conv = conv_res.json()
+    conv_id = conv["id"]
+    assert len(conv["messages"]) == 2
+    assert "non-physician" in conv["messages"][1]["disclaimer"].lower()
+
+    # Follow-up message with deterministic emergency red-flag trigger
+    msg_res = client.post(f"/api/v1/careconnect/assistant/conversations/{conv_id}/messages", json={
+        "content": "Now I have severe chest pain radiating to arm and difficulty breathing"
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert msg_res.status_code == 200
+    updated_conv = msg_res.json()
+    assert updated_conv["urgency_level"] == "EMERGENCY_RED"
+    assert updated_conv["recommended_next_action"] == "emergency_assistance"
+
+
+# 14. CareConnect Action 2: Find a Doctor, Booking & Telemedicine Consultation
+def test_careconnect_doctors_appointments_and_telemedicine():
+    pat_token = get_token("olumide@example.com")
+    doc_token = get_token("doctor@fmc.vitalis.ng")
+    pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
+
+    # GET /doctors
+    docs_res = client.get("/api/v1/doctors", headers={"Authorization": f"Bearer {pat_token}"})
+    assert docs_res.status_code == 200
+    docs = docs_res.json()
+    assert len(docs) > 0
+    doc_id = docs[0]["id"]
+
+    # GET /doctors/{id}/availability
+    avail_res = client.get(f"/api/v1/doctors/{doc_id}/availability", headers={"Authorization": f"Bearer {pat_token}"})
+    assert avail_res.status_code == 200
+
+    # POST /appointments
+    appt_res = client.post("/api/v1/appointments", json={
+        "patient_id": pid,
+        "doctor_id": doc_id,
+        "scheduled_time": "2026-11-15T10:00:00Z",
+        "consultation_mode": "video",
+        "reason_for_visit": "Follow-up blood pressure and chest discomfort review"
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert appt_res.status_code == 200
+    appt_id = appt_res.json()["id"]
+
+    # POST /consultations/{id}/session
+    sess_res = client.post(f"/api/v1/consultations/{appt_id}/session", json={
+        "channel_mode": "video"
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert sess_res.status_code == 200
+    sess = sess_res.json()
+    assert sess["is_recorded"] is False
+    sess_id = sess["id"]
+
+    # POST /consultations/{id}/messages
+    cmsg_res = client.post(f"/api/v1/consultations/{sess_id}/messages", json={
+        "content": "Good morning Doctor, I have uploaded my recent BP readings."
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert cmsg_res.status_code == 200
+
+    # Doctor explicit signed prescription action
+    rx_res = client.post(f"/api/v1/consultations/{sess_id}/prescriptions", json={
+        "doctor_recommendations": "Continue low-sodium diet and monitor BP twice daily.",
+        "medications": [{"drug": "Amlodipine", "dosage": "5mg OD", "duration": "30 days"}]
+    }, headers={"Authorization": f"Bearer {doc_token}"})
+    assert rx_res.status_code == 200
+    assert rx_res.json()["signed_prescription"] is not None
+
+
+# 15. CareConnect Action 3: Home Visit & Emergency Safety Redirect
+def test_careconnect_home_visits_and_emergency_redirect():
+    pat_token = get_token("olumide@example.com")
+    doc_token = get_token("doctor@statehospital.vitalis.ng")
+    pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
+
+    # 1. Emergency symptom in home visit -> must redirect to emergency coordination, never routine home visit
+    em_visit = client.post("/api/v1/home-visits", json={
+        "patient_id": pid,
+        "professional_type_needed": "Medical Doctor",
+        "symptoms_or_reason": "Patient in active labour with severe bleeding",
+        "address": "14 Obantoko Road, Abeokuta",
+        "latitude": 7.1500,
+        "longitude": 3.3500
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert em_visit.status_code == 200
+    assert em_visit.json()["status"] == "redirected_to_emergency"
+    assert em_visit.json()["urgency_flag"] is True
+
+    # 2. Routine home visit -> matched & confirmed with ETA
+    routine_visit = client.post("/api/v1/home-visits", json={
+        "patient_id": pid,
+        "professional_type_needed": "Medical Doctor",
+        "symptoms_or_reason": "Routine post-discharge wound dressing and vitals check",
+        "address": "14 Obantoko Road, Abeokuta",
+        "latitude": 7.1500,
+        "longitude": 3.3500
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert routine_visit.status_code == 200
+    rv_data = routine_visit.json()
+    assert rv_data["status"] == "confirmed"
+    assert rv_data["assignment"]["estimated_arrival_minutes"] > 0
+    visit_id = rv_data["id"]
+
+    # GET /home-visits/{id}
+    get_rv = client.get(f"/api/v1/home-visits/{visit_id}", headers={"Authorization": f"Bearer {pat_token}"})
+    assert get_rv.status_code == 200
+
+    # PATCH /home-visits/{id}/status
+    patch_rv = client.patch(f"/api/v1/home-visits/{visit_id}/status", json={
+        "status": "en_route",
+        "tracking_status": "en_route",
+        "estimated_arrival_minutes": 12
+    }, headers={"Authorization": f"Bearer {doc_token}"})
+    assert patch_rv.status_code == 200
+    assert patch_rv.json()["status"] == "en_route"
+
+
+# 16. CareConnect Action 4 & 5: Intelligent Hospital Search & Emergency Coordination
+def test_careconnect_hospital_capability_search_and_emergency_coordination():
+    pat_token = get_token("olumide@example.com")
+    admin_token = get_token("admin@fmc.vitalis.ng")
+    doc_token = get_token("doctor@fmc.vitalis.ng")
+    pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
+    facs = client.get("/api/v1/facilities").json()
+    fmc_id = facs[0]["id"]
+
+    # PUT /hospitals/{id}/capabilities & /availability
+    cap_up = client.put(f"/api/v1/hospitals/{fmc_id}/capabilities", json={
+        "services": ["Emergency Obstetrics", "Cardiology", "Trauma Resuscitation"],
+        "specialists": ["Obstetrician/Gynaecologist", "Cardiologist"],
+        "equipment": ["Operating Theatre", "Emergency C-Section", "Blood Transfusion", "NICU"],
+        "has_operating_theatre": True,
+        "has_blood_bank": True,
+        "has_icu": True,
+        "has_nicu": True
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert cap_up.status_code == 200
+
+    avail_up = client.put(f"/api/v1/hospitals/{fmc_id}/availability", json={
+        "emergency_acceptance_status": "accepting",
+        "available_general_beds": 20,
+        "available_icu_beds": 4,
+        "available_maternity_beds": 6,
+        "specialists_on_duty": ["Obstetrician/Gynaecologist", "Cardiologist"],
+        "expected_wait_minutes": 5
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert avail_up.status_code == 200
+
+    # GET /hospitals/search (Obstetric emergency capability filter)
+    search_res = client.get(
+        "/api/v1/hospitals/search?condition=Obstetric+Emergency&equipment=NICU&is_emergency=true",
+        headers={"Authorization": f"Bearer {pat_token}"}
+    )
+    assert search_res.status_code == 200
+    matched_hosps = search_res.json()
+    assert len(matched_hosps) >= 1
+    assert matched_hosps[0]["facility"]["id"] == fmc_id
+    assert matched_hosps[0]["acceptance_status"] == "accepting"
+
+    # Action 5: POST /emergency/requests
+    em_res = client.post("/api/v1/emergency/requests", json={
+        "patient_id": pid,
+        "initiated_by_role": "relative",
+        "emergency_type": "Obstetric Emergency",
+        "presenting_complaint": "Pregnant patient in active labour with severe bleeding",
+        "required_capabilities": ["Emergency Obstetrics", "Operating Theatre", "Blood Transfusion"],
+        "patient_latitude": 7.1500,
+        "patient_longitude": 3.3550,
+        "patient_address": "14 Obantoko Road, Abeokuta"
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert em_res.status_code == 200
+    em_data = em_res.json()
+    em_id = em_data["id"]
+    assert em_data["status"] == "awaiting_hospital_confirmation"
+    top_candidate_id = em_data["current_candidate_facility_id"]
+    assert top_candidate_id is not None
+
+    # Hospital explicitly confirms capacity -> creates linked referral & dispatches transport
+    conf_res = client.post(f"/api/v1/emergency/requests/{em_id}/confirmations", json={
+        "facility_id": top_candidate_id,
+        "accepted": True,
+        "reason_or_notes": "Obstetric theatre and blood bank ready for immediate arrival."
+    }, headers={"Authorization": f"Bearer {doc_token}"})
+    assert conf_res.status_code == 200
+    conf_data = conf_res.json()
+    assert conf_data["status"] == "transport_coordinated"
+    assert conf_data["confirmed_facility_id"] == top_candidate_id
+    assert conf_data["linked_referral_id"] is not None
+    assert conf_data["transport"] is not None
+
+    # PATCH /emergency/requests/{id}/status -> en_route -> arrived -> handed_over
+    st_res = client.patch(f"/api/v1/emergency/requests/{em_id}/status", json={
+        "status": "arrived",
+        "details": "Ambulance arrived at receiving hospital A&E bay."
+    }, headers={"Authorization": f"Bearer {doc_token}"})
+    assert st_res.status_code == 200
+    assert st_res.json()["status"] == "arrived"
+
+
+# 17. Doctor Clinical AI Review & Document Upload Endpoints
+def test_clinical_ai_review_and_patient_documents():
+    pat_token = get_token("olumide@example.com")
+    doc_token = get_token("doctor@fmc.vitalis.ng")
+    pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
+    fac_id = client.get("/api/v1/facilities").json()[0]["id"]
+
+    # POST /patients/{id}/documents
+    doc_up = client.post(f"/api/v1/patients/{pid}/documents", json={
+        "filename": "prior_ecg_report.pdf",
+        "document_type": "lab_report",
+        "extracted_text": "Sinus tachycardia, non-specific ST changes."
+    }, headers={"Authorization": f"Bearer {pat_token}"})
+    assert doc_up.status_code == 200
+
+    # Open encounter and run POST /encounters/{id}/ai/clinical-review
+    enc = client.post("/api/v1/encounters", json={
+        "patient_id": pid, "facility_id": fac_id, "visit_type": "walk_in", "priority": "urgent",
+        "presenting_complaint": "Fever, chills and headache for 3 days"
+    }, headers={"Authorization": f"Bearer {doc_token}"}).json()
+
+    ai_rev = client.post(f"/api/v1/encounters/{enc['id']}/ai/clinical-review", headers={"Authorization": f"Bearer {doc_token}"})
+    assert ai_rev.status_code == 200
+    analysis_id = ai_rev.json()["id"]
+
+    # GET /encounters/{id}/ai/analyses
+    ai_list = client.get(f"/api/v1/encounters/{enc['id']}/ai/analyses", headers={"Authorization": f"Bearer {doc_token}"})
+    assert ai_list.status_code == 200
+    assert len(ai_list.json()) >= 1
+
+    # PATCH /ai/analyses/{id}/review
+    rev_patch = client.patch(f"/api/v1/ai/analyses/{analysis_id}/review", json={
+        "action": "accepted",
+        "rationale": "Reviewed and verified against clinical presentation."
+    }, headers={"Authorization": f"Bearer {doc_token}"})
+    assert rev_patch.status_code == 200
+    assert rev_patch.json()["review_status"] == "accepted"
+
+

@@ -22,6 +22,7 @@ class UserRole(str, enum.Enum):
     DOCTOR = "doctor"
     LAB_TECH = "lab_tech"
     RADIOLOGIST = "radiologist"
+    HOME_VISIT_PROVIDER = "home_visit_provider"
     FACILITY_ADMIN = "facility_admin"
     NETWORK_ADMIN = "network_admin"
 
@@ -86,6 +87,29 @@ class InsightReviewStatus(str, enum.Enum):
     ACCEPTED = "accepted"
     EDITED = "edited"
     REJECTED = "rejected"
+
+class EmergencyRequestStatus(str, enum.Enum):
+    INITIATED = "initiated"
+    ASSESSED = "assessed"
+    MATCHING = "matching"
+    AWAITING_HOSPITAL_CONFIRMATION = "awaiting_hospital_confirmation"
+    CONFIRMED = "confirmed"
+    TRANSPORT_COORDINATED = "transport_coordinated"
+    EN_ROUTE = "en_route"
+    ARRIVED = "arrived"
+    HANDED_OVER = "handed_over"
+    CANCELLED = "cancelled"
+
+class HomeVisitStatus(str, enum.Enum):
+    REQUESTED = "requested"
+    MATCHED = "matched"
+    CONFIRMED = "confirmed"
+    EN_ROUTE = "en_route"
+    ARRIVED = "arrived"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    REDIRECTED_TO_EMERGENCY = "redirected_to_emergency"
+    CANCELLED = "cancelled"
 
 # ----------------- Core Entities -----------------
 
@@ -528,4 +552,330 @@ class AuditEvent(Base):
     ip_address = Column(String(45), nullable=True)
     timestamp = Column(DateTime(timezone=True), default=get_utc_now)
     event_metadata = Column(JSON, default=dict)
+
+
+# ----------------- VITALIS CareConnect & Clinical AI Modules -----------------
+
+class PatientDocument(Base):
+    __tablename__ = "patient_documents"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    uploaded_by_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    filename = Column(String(255), nullable=False)
+    document_type = Column(String(50), default="lab_report")  # lab_report, imaging_report, referral_letter, discharge_summary
+    mime_type = Column(String(100), default="application/pdf")
+    file_size_bytes = Column(Integer, default=0)
+    private_object_key = Column(String(255), nullable=False)
+    extracted_text = Column(Text, nullable=True)
+    ocr_quality = Column(String(50), default="high")  # high, medium, low_illegible
+    provenance = Column(String(50), default="patient_uploaded")  # patient_uploaded, facility_verified
+    is_outdated_flag = Column(Boolean, default=False)
+    has_conflict_flag = Column(Boolean, default=False)
+    malware_scan_status = Column(String(30), default="clean")
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    patient = relationship("Patient")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class ClinicalAIAnalysis(Base):
+    __tablename__ = "clinical_ai_analyses"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    encounter_id = Column(String(36), ForeignKey("encounters.id"), nullable=False, index=True)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    requested_by_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    summary = Column(Text, nullable=False)
+    differential_list = Column(JSON, default=list)
+    supporting_evidence = Column(JSON, default=list)
+    contradicting_evidence = Column(JSON, default=list)
+    missing_info_flags = Column(JSON, default=list)
+    medication_considerations = Column(JSON, default=list)
+    red_flags = Column(JSON, default=list)
+    source_documents = Column(JSON, default=list)
+    model_version = Column(String(50), default="VITALIS-CLINICAL-AI-2026.1")
+    reference_set_version = Column(String(50), default="NG-STG-2026.1")
+    review_status = Column(SQLEnum(InsightReviewStatus), default=InsightReviewStatus.PENDING)
+    reviewed_by_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    clinician_edits = Column(Text, nullable=True)
+    safety_label = Column(
+        String(255),
+        default="AI-GENERATED DRAFT ARTIFACT — Clinician review required. Only a doctor's explicit signed action enters the clinical record."
+    )
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    encounter = relationship("Encounter")
+    patient = relationship("Patient")
+
+
+class AssistantConversation(Base):
+    __tablename__ = "assistant_conversations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    title = Column(String(255), default="CareConnect Symptom Guidance")
+    modality = Column(String(20), default="text")  # text, voice
+    history_access_permitted = Column(Boolean, default=False)
+    urgency_level = Column(String(50), default="ROUTINE_GREEN")  # EMERGENCY_RED, URGENT_YELLOW, ROUTINE_GREEN
+    recommended_professional_type = Column(String(100), nullable=True)
+    recommended_next_action = Column(String(100), nullable=True)  # talk_to_doctor, home_visit, find_hospital, emergency_assistance
+    status = Column(String(30), default="active")  # active, handed_off, closed
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+    patient = relationship("Patient")
+    messages = relationship("AssistantMessage", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(String(36), ForeignKey("assistant_conversations.id"), nullable=False, index=True)
+    sender_role = Column(String(20), nullable=False)  # patient, assistant
+    content = Column(Text, nullable=False)
+    red_flags_triggered = Column(JSON, default=list)
+    structured_symptoms = Column(JSON, default=list)
+    recommended_professional = Column(String(100), nullable=True)
+    disclaimer = Column(
+        String(255),
+        default="CareConnect AI Assistant provides non-physician preliminary guidance only. It does not provide a confirmed diagnosis or replace emergency medical care."
+    )
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    conversation = relationship("AssistantConversation", back_populates="messages")
+
+
+class DoctorProfile(Base):
+    __tablename__ = "doctor_profiles"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), unique=True, nullable=False)
+    facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=True)
+    full_name = Column(String(255), nullable=False)
+    specialization = Column(String(100), nullable=False, index=True)  # Cardiology, Obstetrics & Gynaecology, General Practice, Pediatrics, etc.
+    qualifications = Column(String(255), nullable=False)  # MBChB, FWACS, FMCP
+    license_number = Column(String(100), unique=True, nullable=False)
+    verification_status = Column(String(30), default="verified")  # verified, pending, suspended
+    years_of_experience = Column(Integer, default=5)
+    bio = Column(Text, nullable=True)
+    offers_telemedicine = Column(Boolean, default=True)
+    offers_home_visits = Column(Boolean, default=False)
+    consultation_fee_ngn = Column(Float, default=5000.0)
+    languages = Column(JSON, default=lambda: ["English", "Yoruba"])
+    rating = Column(Float, default=4.9)
+    is_available_now = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    user = relationship("User")
+    facility = relationship("Facility")
+    availability_slots = relationship("DoctorAvailability", back_populates="doctor", cascade="all, delete-orphan")
+
+
+class DoctorAvailability(Base):
+    __tablename__ = "doctor_availability"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    doctor_id = Column(String(36), ForeignKey("doctor_profiles.id"), nullable=False, index=True)
+    day_of_week = Column(String(20), nullable=False)  # Monday, Tuesday, etc.
+    start_time = Column(String(10), nullable=False)  # "09:00"
+    end_time = Column(String(10), nullable=False)    # "17:00"
+    consultation_mode = Column(String(30), default="online")  # online, in_person, home_visit
+    is_booked = Column(Boolean, default=False)
+
+    doctor = relationship("DoctorProfile", back_populates="availability_slots")
+
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    appointment_number = Column(String(60), unique=True, index=True, nullable=False)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    doctor_id = Column(String(36), ForeignKey("doctor_profiles.id"), nullable=False, index=True)
+    scheduled_time = Column(String(50), nullable=False)
+    consultation_mode = Column(String(30), default="video")  # video, audio, chat, in_person
+    reason_for_visit = Column(Text, nullable=False)
+    shared_record_ids = Column(JSON, default=list)
+    status = Column(String(30), default="confirmed")  # requested, confirmed, in_progress, completed, cancelled
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    patient = relationship("Patient")
+    doctor = relationship("DoctorProfile")
+    consultation_session = relationship("ConsultationSession", back_populates="appointment", uselist=False)
+
+
+class ConsultationSession(Base):
+    __tablename__ = "consultation_sessions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    appointment_id = Column(String(36), ForeignKey("appointments.id"), unique=True, nullable=False)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False)
+    doctor_id = Column(String(36), ForeignKey("doctor_profiles.id"), nullable=False)
+    channel_mode = Column(String(30), default="video")  # video, audio_fallback, messaging
+    room_token = Column(String(120), nullable=False)
+    session_url = Column(String(255), nullable=False)
+    is_recorded = Column(Boolean, default=False)  # Consultations are not recorded by default per privacy architecture
+    doctor_recommendations = Column(Text, nullable=True)
+    signed_prescription = Column(JSON, nullable=True)  # Only populated by doctor's explicit signed action
+    signed_by_doctor_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    signed_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(30), default="active")  # active, completed
+    started_at = Column(DateTime(timezone=True), default=get_utc_now)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+
+    appointment = relationship("Appointment", back_populates="consultation_session")
+    messages = relationship("ConsultationMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+class ConsultationMessage(Base):
+    __tablename__ = "consultation_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    session_id = Column(String(36), ForeignKey("consultation_sessions.id"), nullable=False, index=True)
+    sender_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    sender_role = Column(String(30), nullable=False)  # patient, doctor
+    content = Column(Text, nullable=False)
+    attachment_ref = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    session = relationship("ConsultationSession", back_populates="messages")
+
+
+class HomeVisitRequest(Base):
+    __tablename__ = "home_visit_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    request_number = Column(String(60), unique=True, index=True, nullable=False)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    professional_type_needed = Column(String(100), default="Medical Doctor")  # Medical Doctor, Registered Nurse, Physiotherapist
+    symptoms_or_reason = Column(Text, nullable=False)
+    address = Column(String(255), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    urgency_flag = Column(Boolean, default=False)
+    redirected_emergency_reason = Column(Text, nullable=True)
+    status = Column(SQLEnum(HomeVisitStatus), default=HomeVisitStatus.REQUESTED, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+    patient = relationship("Patient")
+    assignment = relationship("VisitAssignment", back_populates="visit_request", uselist=False)
+
+
+class VisitAssignment(Base):
+    __tablename__ = "visit_assignments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    visit_request_id = Column(String(36), ForeignKey("home_visit_requests.id"), unique=True, nullable=False)
+    provider_user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    provider_name = Column(String(255), nullable=False)
+    provider_role = Column(String(100), nullable=False)
+    provider_license = Column(String(100), nullable=False)
+    estimated_arrival_minutes = Column(Integer, default=25)
+    service_fee_ngn = Column(Float, default=15000.0)
+    tracking_status = Column(String(50), default="provider_confirmed")  # provider_confirmed, en_route, arrived, completed
+    visit_notes = Column(Text, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), default=get_utc_now)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    visit_request = relationship("HomeVisitRequest", back_populates="assignment")
+
+
+class HospitalCapability(Base):
+    __tablename__ = "hospital_capabilities"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    facility_id = Column(String(36), ForeignKey("facilities.id"), unique=True, nullable=False, index=True)
+    services = Column(JSON, default=list)        # e.g. ["Emergency Obstetrics", "Cardiology", "Trauma Resuscitation", "Pediatrics"]
+    specialists = Column(JSON, default=list)     # e.g. ["Obstetrician/Gynaecologist", "Cardiologist", "General Surgeon", "Pediatrician"]
+    equipment = Column(JSON, default=list)       # e.g. ["Operating Theatre", "Emergency C-Section", "Blood Transfusion", "NICU", "CT Scanner", "Defibrillator"]
+    has_operating_theatre = Column(Boolean, default=False)
+    has_blood_bank = Column(Boolean, default=False)
+    has_icu = Column(Boolean, default=False)
+    has_nicu = Column(Boolean, default=False)
+    last_confirmed_at = Column(DateTime(timezone=True), default=get_utc_now)
+    reported_by = Column(String(255), nullable=False)
+
+    facility = relationship("Facility")
+
+
+class HospitalAvailability(Base):
+    __tablename__ = "hospital_availability"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    facility_id = Column(String(36), ForeignKey("facilities.id"), unique=True, nullable=False, index=True)
+    emergency_acceptance_status = Column(String(30), default="accepting")  # accepting, limited, not_accepting, unknown
+    available_general_beds = Column(Integer, default=10)
+    available_icu_beds = Column(Integer, default=2)
+    available_maternity_beds = Column(Integer, default=4)
+    specialists_on_duty = Column(JSON, default=list)
+    expected_wait_minutes = Column(Integer, default=10)
+    notes = Column(Text, nullable=True)
+    last_confirmed_at = Column(DateTime(timezone=True), default=get_utc_now)
+    reported_by = Column(String(255), nullable=False)
+
+    facility = relationship("Facility")
+
+
+class EmergencyRequest(Base):
+    __tablename__ = "emergency_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    emergency_number = Column(String(60), unique=True, index=True, nullable=False)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    initiated_by_role = Column(String(50), default="patient")  # patient, relative, clinician
+    emergency_type = Column(String(100), nullable=False)  # Obstetric Emergency, Cardiac Arrest / Chest Pain, Severe Trauma / Bleeding, Acute Stroke
+    presenting_complaint = Column(Text, nullable=False)
+    required_capabilities = Column(JSON, default=list)
+    patient_latitude = Column(Float, nullable=False)
+    patient_longitude = Column(Float, nullable=False)
+    patient_address = Column(String(255), nullable=True)
+    red_flags_detected = Column(JSON, default=list)
+    candidate_facilities = Column(JSON, default=list)  # Ranked list of matched facility IDs and scores
+    current_candidate_facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=True)
+    confirmed_facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=True)
+    linked_referral_id = Column(String(36), ForeignKey("referrals.id"), nullable=True)
+    status = Column(SQLEnum(EmergencyRequestStatus), default=EmergencyRequestStatus.INITIATED, nullable=False, index=True)
+    cancellation_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+    patient = relationship("Patient")
+    events = relationship("EmergencyEvent", back_populates="emergency_request", cascade="all, delete-orphan")
+    transport = relationship("TransportAssignment", back_populates="emergency_request", uselist=False)
+
+
+class EmergencyEvent(Base):
+    __tablename__ = "emergency_events"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    emergency_request_id = Column(String(36), ForeignKey("emergency_requests.id"), nullable=False, index=True)
+    event_type = Column(String(60), nullable=False)  # INITIATED, ASSESSED, MATCHED_CANDIDATE, HOSPITAL_CONFIRMED, HOSPITAL_DECLINED, TRANSPORT_DISPATCHED, ARRIVED
+    facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=True)
+    actor_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    details = Column(Text, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=get_utc_now)
+
+    emergency_request = relationship("EmergencyRequest", back_populates="events")
+
+
+class TransportAssignment(Base):
+    __tablename__ = "transport_assignments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    emergency_request_id = Column(String(36), ForeignKey("emergency_requests.id"), unique=True, nullable=False)
+    provider_name = Column(String(150), default="Ogun State Emergency Medical Services (OGSEMS)")
+    vehicle_type = Column(String(60), default="Advanced Life Support (ALS) Ambulance")
+    vehicle_callsign = Column(String(50), default="AMB-ABK-04")
+    dispatch_status = Column(String(50), default="dispatched")  # dispatched, en_route_to_patient, en_route_to_hospital, arrived
+    estimated_pickup_minutes = Column(Integer, default=8)
+    estimated_hospital_arrival_minutes = Column(Integer, default=18)
+    contact_phone = Column(String(50), default="+234-800-112-9999")
+    assigned_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    emergency_request = relationship("EmergencyRequest", back_populates="transport")
+
 

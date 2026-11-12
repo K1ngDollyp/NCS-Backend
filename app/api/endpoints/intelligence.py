@@ -5,13 +5,14 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_roles
 from app.models.models import (
-    ClinicalInsight, Patient, Encounter, User, UserRole,
+    ClinicalInsight, ClinicalAIAnalysis, Patient, Encounter, User, UserRole,
     InsightReviewStatus, get_utc_now
 )
 from app.schemas.schemas import (
     MedicationSafetyCheckRequest, MedicationSafetyCheckResponse,
     DifferentialRequest, DifferentialResponse, InsightReviewRequest,
-    HeartDiseaseMLInput, DiabetesMLInput, MLPredictionResponse
+    HeartDiseaseMLInput, DiabetesMLInput, MLPredictionResponse,
+    ClinicalAIAnalysisResponse
 )
 from app.services.medication_safety import MedicationSafetyChecker
 from app.services.intelligence import IntelligenceService
@@ -202,7 +203,6 @@ def predict_heart_disease_ml(
         model_version=result["model_version"],
         clinical_significance=result["clinical_significance"]
     )
-
 @router.post("/ml/predict-diabetes", response_model=MLPredictionResponse)
 def predict_diabetes_ml(
     input_data: DiabetesMLInput,
@@ -240,5 +240,4 @@ def predict_diabetes_ml(
         model_version=result["model_version"],
         clinical_significance=result["clinical_significance"]
     )
-
 
