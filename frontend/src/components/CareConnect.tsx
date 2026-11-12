@@ -1,27 +1,28 @@
 import clsx from 'clsx'
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronDown, Clock, Hospital, LocateFixed, MapPin, Phone, Send, ShieldCheck, Siren, XCircle } from 'lucide-react'
+import { AlertTriangle, Ambulance, ArrowLeft, Check, CheckCircle2, ChevronDown, Clock, Hospital, LocateFixed, MapPin, Phone, Send, ShieldCheck, Siren, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { shortFacility, timeAgo } from '../lib/format'
 import { useResource } from '../lib/hooks'
-import type { Facility, FacilityMatch, PatientProfile, Referral, TriageResult } from '../lib/types'
+import type { EmergencyRequest, Facility, HospitalSearchResult, PatientProfile, Referral, TriageResult } from '../lib/types'
 import { Button, ErrorNote, Skeleton } from './ui'
 
 /* VITALIS CareConnect: symptom check → capability-matched hospital → share record + referral → hospital confirms.
-   Every step calls the real backend: triage rules (/triage), matching (/facilities/match),
-   consent (/connect/qr-grants with a grantee facility) and referrals (/referrals). */
+   Emergencies go through VITALIS emergency coordination: hospitals are asked one at a time and must confirm.
+   Every step calls the real backend: /triage/sessions, /hospitals/search, /connect/qr-grants, /referrals,
+   /emergency/requests. */
 
 const WARNING_SIGNS = ['Chest pain', 'Difficulty breathing', 'Slurred speech', 'Sudden weakness on one side', 'Severe bleeding', 'Loss of consciousness']
 const OTHER_SYMPTOMS = ['Headache', 'Blurred vision', 'Excessive thirst', 'Frequent urination', 'Tiredness', 'High fever', 'Cough', 'Body aches', 'Severe abdominal pain', 'Vomiting and diarrhea']
 const DURATIONS = [{ v: 1, l: 'Today' }, { v: 3, l: '2–3 days' }, { v: 7, l: 'About a week' }, { v: 30, l: 'Longer' }]
 
-/** What the patient needs; `q` is the term the matching engine checks against each hospital's reported services. */
-const CARE_NEEDS = [
-  { q: 'general outpatient', label: 'General doctor' },
-  { q: 'cardiology', label: 'Heart and blood pressure' },
-  { q: 'emergency', label: 'Emergency care' },
-  { q: 'pathology', label: 'Lab tests' },
-  { q: 'radiology', label: 'X-ray and scans' },
+/** What the patient needs, mapped to the capability-search parameters each hospital's reported capabilities are checked against. */
+const CARE_NEEDS: { key: string; label: string; params: Record<string, string> }[] = [
+  { key: 'general', label: 'General doctor', params: {} },
+  { key: 'heart', label: 'Heart and blood pressure', params: { condition: 'heart' } },
+  { key: 'pregnancy', label: 'Pregnancy and childbirth', params: { condition: 'obstetric' } },
+  { key: 'children', label: 'Children', params: { condition: 'pediatric' } },
+  { key: 'emergency', label: 'Emergency care', params: { service: 'Emergency Resuscitation' } },
 ]
 
 /** Demo location used when the browser location is not shared. Labelled as such in the UI. */
@@ -45,21 +46,28 @@ const PATIENT_GUIDANCE: Record<string, string> = {
 function needFromTriage(t: TriageResult) {
   if (t.urgency_level === 'EMERGENCY_RED') return 'emergency'
   const s = (t.recommended_service ?? '').toLowerCase()
-  if (s.includes('cardio')) return 'cardiology'
-  return 'general outpatient'
+  if (s.includes('cardio')) return 'heart'
+  if (s.includes('obstetric')) return 'pregnancy'
+  return 'general'
 }
 
-type Step = 'symptoms' | 'result' | 'hospitals' | 'send' | 'status'
+/** The warning signs the patient reported, extracted from the rule output (never the clinical label). */
+function triggersOf(flags: string[]) {
+  return [...new Set(flags.map((f) => f.match(/triggered by '([^']+)'/)?.[1]).filter((t): t is string => !!t))]
+}
 
-export function CareConnect({ patient, onExit, initialReferral }: { patient: PatientProfile; onExit: () => void; initialReferral?: Referral | null }) {
-  const [step, setStep] = useState<Step>(initialReferral ? 'status' : 'symptoms')
+type Step = 'symptoms' | 'result' | 'hospitals' | 'send' | 'status' | 'emergency'
+
+export function CareConnect({ patient, onExit, initialReferral, initialEmergency }: { patient: PatientProfile; onExit: () => void; initialReferral?: Referral | null; initialEmergency?: EmergencyRequest | null }) {
+  const [step, setStep] = useState<Step>(initialEmergency ? 'emergency' : initialReferral ? 'status' : 'symptoms')
   const [picked, setPicked] = useState<string[]>([])
   const [days, setDays] = useState(7)
   const [details, setDetails] = useState('')
   const [triage, setTriage] = useState<TriageResult | null>(null)
-  const [need, setNeed] = useState('general outpatient')
-  const [chosen, setChosen] = useState<FacilityMatch | null>(null)
+  const [need, setNeed] = useState('general')
+  const [chosen, setChosen] = useState<HospitalSearchResult | null>(null)
   const [referral, setReferral] = useState<Referral | null>(initialReferral ?? null)
+  const [emergency, setEmergency] = useState<EmergencyRequest | null>(initialEmergency ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -75,12 +83,32 @@ export function CareConnect({ patient, onExit, initialReferral }: { patient: Pat
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
+  async function startEmergency() {
+    if (!triage) return
+    setBusy(true); setError(null)
+    try {
+      const signs = triggersOf(triage.matched_red_flags)
+      const symptoms = triage.symptoms_structured.map((s) => s.symptom).join(', ')
+      const em = await api<EmergencyRequest>('/emergency/requests', {
+        method: 'POST',
+        json: {
+          patient_id: patient.id, initiated_by_role: 'patient',
+          emergency_type: signs[0] ? signs[0][0].toUpperCase() + signs[0].slice(1) : 'Medical emergency',
+          presenting_complaint: symptoms, patient_latitude: DEMO_LOCATION.lat, patient_longitude: DEMO_LOCATION.lon,
+          patient_address: DEMO_LOCATION.label,
+        },
+      })
+      setEmergency(em)
+      setStep('emergency')
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
   // Each step is a new screen: start it at the top.
   useEffect(() => { window.scrollTo({ top: 0 }) }, [step])
 
   const back = () => {
     setError(null)
-    if (step === 'symptoms' || step === 'status') onExit()
+    if (step === 'symptoms' || step === 'status' || step === 'emergency') onExit()
     else setStep(({ result: 'symptoms', hospitals: 'result', send: 'hospitals' } as const)[step])
   }
 
@@ -89,9 +117,9 @@ export function CareConnect({ patient, onExit, initialReferral }: { patient: Pat
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         <button onClick={back} aria-label="Back" className="grid size-10 place-items-center rounded-md text-slate-600 hover:bg-slate-100"><ArrowLeft className="size-5" /></button>
         <div className="min-w-0">
-          <div className="text-xs font-medium text-brand-700">VITALIS CareConnect</div>
+          <div className={clsx('text-xs font-medium', step === 'emergency' ? 'text-rose-700' : 'text-brand-700')}>VITALIS CareConnect</div>
           <div className="truncate text-base font-semibold text-slate-900">
-            {{ symptoms: 'Check my symptoms', result: 'Your result', hospitals: 'Find a hospital', send: 'Send your details', status: 'Your referral' }[step]}
+            {{ symptoms: 'Check my symptoms', result: 'Your result', hospitals: 'Find a hospital', send: 'Send your details', status: 'Your referral', emergency: 'Emergency help' }[step]}
           </div>
         </div>
       </div>
@@ -119,10 +147,15 @@ export function CareConnect({ patient, onExit, initialReferral }: { patient: Pat
           </>
         )}
 
-        {step === 'result' && triage && <TriageCard triage={triage} onFind={() => setStep('hospitals')} />}
+        {step === 'result' && triage && (
+          <>
+            <TriageCard triage={triage} busy={busy} onFind={() => setStep('hospitals')} onEmergency={startEmergency} />
+            <ErrorNote message={error} />
+          </>
+        )}
 
         {step === 'hospitals' && triage && (
-          <HospitalSearch need={need} setNeed={setNeed} emergency={triage.urgency_level === 'EMERGENCY_RED'} onChoose={(m) => { setChosen(m); setStep('send') }} />
+          <HospitalSearch need={need} setNeed={setNeed} onChoose={(m) => { setChosen(m); setStep('send') }} />
         )}
 
         {step === 'send' && triage && chosen && (
@@ -133,6 +166,8 @@ export function CareConnect({ patient, onExit, initialReferral }: { patient: Pat
         {step === 'status' && referral && (
           <ReferralStatusView referral={referral} patient={patient} onChooseAnother={() => { setReferral(null); setStep(triage ? 'hospitals' : 'symptoms') }} onDone={onExit} />
         )}
+
+        {step === 'emergency' && emergency && <EmergencyStatusView request={emergency} patient={patient} onDone={onExit} />}
       </div>
     </div>
   )
@@ -159,11 +194,11 @@ function ChipGroup({ title, options, picked, setPicked, tone }: { title: string;
   )
 }
 
-function TriageCard({ triage, onFind }: { triage: TriageResult; onFind: () => void }) {
+function TriageCard({ triage, busy, onFind, onEmergency }: { triage: TriageResult; busy: boolean; onFind: () => void; onEmergency: () => void }) {
   const u = URGENCY[triage.urgency_level as keyof typeof URGENCY] ?? URGENCY.ROUTINE_GREEN
   const emergency = triage.urgency_level === 'EMERGENCY_RED'
   // Patients see the warning sign they reported, never the rule's clinical label (no diagnosis on the patient side).
-  const triggers = [...new Set(triage.matched_red_flags.map((f) => f.match(/triggered by '([^']+)'/)?.[1]).filter((t): t is string => !!t))]
+  const triggers = triggersOf(triage.matched_red_flags)
   return (
     <>
       <section className={clsx('rounded-lg border border-l-4 bg-white p-4 animate-slide-up',
@@ -181,14 +216,19 @@ function TriageCard({ triage, onFind }: { triage: TriageResult; onFind: () => vo
         <div className="mt-3 text-xs text-slate-500">Rule-based check · protocol {triage.protocol_version} · not a diagnosis</div>
       </section>
 
-      {emergency && (
-        <a href="tel:112" className="flex h-14 items-center justify-center gap-2 rounded-md bg-rose-700 text-lg font-semibold text-white hover:bg-rose-800">
-          <Phone className="size-5" />Call 112 now
-        </a>
+      {emergency ? (
+        <>
+          <a href="tel:112" className="flex h-14 items-center justify-center gap-2 rounded-md bg-rose-700 text-lg font-semibold text-white hover:bg-rose-800">
+            <Phone className="size-5" />Call 112 now
+          </a>
+          <Button size="lg" variant="secondary" className="w-full" loading={busy} icon={<Siren className="size-5" />} onClick={onEmergency}>
+            Find a hospital that will take me now
+          </Button>
+          <p className="text-center text-sm text-slate-600">VITALIS asks the best-equipped hospital to confirm it can receive you, and moves to the next one if it can’t.</p>
+        </>
+      ) : (
+        <Button size="lg" className="w-full" icon={<Hospital className="size-5" />} onClick={onFind}>Find a hospital that can see me</Button>
       )}
-      <Button size="lg" variant={emergency ? 'secondary' : 'primary'} className="w-full" icon={<Hospital className="size-5" />} onClick={onFind}>
-        {emergency ? 'Find a hospital with emergency care' : 'Find a hospital that can see me'}
-      </Button>
     </>
   )
 }
@@ -201,30 +241,26 @@ function km(a: { lat: number; lon: number }, f: Facility) {
   return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
-function availabilityText(a: string) {
-  return ({ available: 'Accepting patients', limited: 'Limited availability', unavailable: 'Not accepting', unknown: 'Availability unknown' } as Record<string, string>)[a] ?? a
+const ACCEPTANCE: Record<string, { text: string; tone: 'brand' | 'amber' | 'slate' }> = {
+  accepting: { text: 'Accepting patients', tone: 'brand' },
+  limited: { text: 'Limited capacity', tone: 'amber' },
+  not_accepting: { text: 'Not accepting', tone: 'slate' },
+  unknown: { text: 'Availability unknown', tone: 'slate' },
 }
 
-function freshness(iso: string | null) {
-  if (!iso) return { text: 'Never confirmed', stale: true }
-  const hours = (Date.now() - new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z').getTime()) / 36e5
-  return { text: `Confirmed by the hospital ${timeAgo(iso)}`, stale: hours > 48 }
-}
-
-function HospitalSearch({ need, setNeed, emergency, onChoose }: { need: string; setNeed: (n: string) => void; emergency: boolean; onChoose: (m: FacilityMatch) => void }) {
+function HospitalSearch({ need, setNeed, onChoose }: { need: string; setNeed: (n: string) => void; onChoose: (m: HospitalSearchResult) => void }) {
   const [loc, setLoc] = useState(DEMO_LOCATION)
   const [locating, setLocating] = useState(false)
-  const path = `/facilities/match?user_lat=${loc.lat}&user_lon=${loc.lon}&is_emergency=${emergency}&service_needed=${encodeURIComponent(need)}`
-  const matches = useResource<FacilityMatch[]>(path)
+  const n = CARE_NEEDS.find((c) => c.key === need) ?? CARE_NEEDS[0]
+  const qs = new URLSearchParams({ latitude: String(loc.lat), longitude: String(loc.lon), ...n.params })
+  const matches = useResource<HospitalSearchResult[]>(`/hospitals/search?${qs}`)
   const all = useResource<Facility[]>('/facilities')
-  const needLabel = CARE_NEEDS.find((n) => n.q === need)?.label ?? need
 
   const excluded = useMemo(() => {
     if (!matches.data || !all.data) return []
     const ok = new Set(matches.data.map((m) => m.facility.id))
     return all.data.filter((f) => !ok.has(f.id))
   }, [matches.data, all.data])
-
   const nearest = matches.data?.length ? Math.min(...matches.data.map((m) => m.distance_km)) : null
 
   function useMyLocation() {
@@ -242,9 +278,9 @@ function HospitalSearch({ need, setNeed, emergency, onChoose }: { need: string; 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-slate-900">What care do you need?</h3>
         <div className="flex flex-wrap gap-2">
-          {CARE_NEEDS.map((n) => (
-            <button key={n.q} onClick={() => setNeed(n.q)} aria-pressed={need === n.q}
-              className={clsx('min-h-10 rounded-md border px-3 text-sm font-medium', need === n.q ? 'border-brand-700 bg-brand-50 text-brand-800' : 'border-slate-300 bg-white text-slate-700')}>{n.label}</button>
+          {CARE_NEEDS.map((c) => (
+            <button key={c.key} onClick={() => setNeed(c.key)} aria-pressed={need === c.key}
+              className={clsx('min-h-10 rounded-md border px-3 text-sm font-medium', need === c.key ? 'border-brand-700 bg-brand-50 text-brand-800' : 'border-slate-300 bg-white text-slate-700')}>{c.label}</button>
           ))}
         </div>
       </section>
@@ -258,8 +294,8 @@ function HospitalSearch({ need, setNeed, emergency, onChoose }: { need: string; 
 
       {matches.data && (
         <p className="text-sm text-slate-600">
-          {matches.data.length === 0 ? <>No hospital on VITALIS reports <b>{needLabel.toLowerCase()}</b> right now.</> :
-            <><b>{matches.data.length}</b> of {all.data?.length ?? '…'} hospitals report <b>{needLabel.toLowerCase()}</b>. Best fit first, not nearest first.</>}
+          {matches.data.length === 0 ? <>No hospital on VITALIS can confirm <b>{n.label.toLowerCase()}</b> right now.</> :
+            <><b>{matches.data.length}</b> of {all.data?.length ?? '…'} hospitals can provide <b>{n.label.toLowerCase()}</b>. Best fit first, not nearest first.</>}
         </p>
       )}
 
@@ -272,7 +308,7 @@ function HospitalSearch({ need, setNeed, emergency, onChoose }: { need: string; 
             {excluded.map((f) => (
               <li key={f.id} className="flex items-start gap-2 text-sm text-slate-600">
                 <XCircle className="mt-0.5 size-4 shrink-0 text-slate-400" />
-                <span><b className="font-medium text-slate-800">{shortFacility(f.name)}</b>: {emergency && !f.emergency_available ? 'does not offer emergency care' : `does not report ${needLabel.toLowerCase()}`}
+                <span><b className="font-medium text-slate-800">{shortFacility(f.name)}</b>: has not confirmed it can provide {n.label.toLowerCase()} right now
                   {nearest !== null && km(loc, f) < nearest ? `, so it was left out even though it is closer (${km(loc, f).toFixed(1)} km).` : '.'}</span>
               </li>
             ))}
@@ -283,12 +319,13 @@ function HospitalSearch({ need, setNeed, emergency, onChoose }: { need: string; 
   )
 }
 
-function MatchCard({ m, best, onChoose }: { m: FacilityMatch; best: boolean; onChoose: () => void }) {
+function MatchCard({ m, best, onChoose }: { m: HospitalSearchResult; best: boolean; onChoose: () => void }) {
   const [open, setOpen] = useState(false)
-  const fresh = freshness(m.last_confirmed_at)
+  const a = ACCEPTANCE[m.acceptance_status] ?? ACCEPTANCE.unknown
+  const stale = m.freshness_label === 'stale' || m.freshness_label === 'unknown'
   const b = m.score_breakdown
   const rows = [
-    ['Offers the care you need', b.service_compatibility_C, '40%'],
+    ['Can provide the care you need', b.service_compatibility_C, '40%'],
     ['Reported availability', b.availability_A, '25%'],
     ['Distance', b.distance_suitability_D, '20%'],
     ['Verified and up to date', b.verification_freshness_V, '15%'],
@@ -308,12 +345,20 @@ function MatchCard({ m, best, onChoose }: { m: FacilityMatch; best: boolean; onC
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          <span className={clsx('inline-flex items-center gap-1.5 font-medium', m.reported_availability === 'available' ? 'text-brand-800' : m.reported_availability === 'limited' ? 'text-amber-800' : 'text-slate-600')}>
-            <span className={clsx('size-2 rounded-full', m.reported_availability === 'available' ? 'bg-brand-600' : m.reported_availability === 'limited' ? 'bg-amber-500' : 'bg-slate-400')} />
-            {availabilityText(m.reported_availability)}
+          <span className={clsx('inline-flex items-center gap-1.5 font-medium', a.tone === 'brand' ? 'text-brand-800' : a.tone === 'amber' ? 'text-amber-800' : 'text-slate-600')}>
+            <span className={clsx('size-2 rounded-full', a.tone === 'brand' ? 'bg-brand-600' : a.tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400')} />
+            {a.text}{m.expected_wait_minutes != null && ` · about ${m.expected_wait_minutes} min wait`}
           </span>
-          <span className={clsx('inline-flex items-center gap-1', fresh.stale ? 'text-amber-800' : 'text-slate-500')}><Clock className="size-3.5" />{fresh.stale ? 'Out of date: ' : ''}{fresh.text}</span>
         </div>
+        <div className={clsx('mt-1 inline-flex items-start gap-1 text-sm', stale ? 'text-amber-800' : 'text-slate-500')}>
+          <Clock className="mt-0.5 size-3.5 shrink-0" />
+          <span>{stale ? 'Out of date: ' : ''}Confirmed by {m.reported_by}{m.last_confirmed_at && `, ${timeAgo(m.last_confirmed_at)}`}</span>
+        </div>
+        {m.matched_capabilities.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {m.matched_capabilities.map((c) => <span key={c} className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"><Check className="size-3 text-brand-700" />{c}</span>)}
+          </div>
+        )}
         <button onClick={() => setOpen(!open)} aria-expanded={open} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900">
           Why this hospital <ChevronDown className={clsx('size-4 transition-transform duration-150', open && 'rotate-180')} />
         </button>
@@ -322,7 +367,7 @@ function MatchCard({ m, best, onChoose }: { m: FacilityMatch; best: boolean; onC
             {rows.map(([label, v, w]) => (
               <div key={label} className="flex items-center justify-between gap-3">
                 <dt className="text-slate-600">{label} <span className="text-slate-400">({w})</span></dt>
-                <dd className="font-semibold text-slate-900 tabular">{Math.round(v)}</dd>
+                <dd className="font-semibold text-slate-900 tabular">{Math.round(v ?? 0)}</dd>
               </div>
             ))}
             <p className="pt-1 text-xs text-slate-500">A transparent prototype score, not a clinical ranking. The hospital still has to confirm it can see you.</p>
@@ -336,7 +381,7 @@ function MatchCard({ m, best, onChoose }: { m: FacilityMatch; best: boolean; onC
   )
 }
 
-function SendReferral({ patient, triage, match, need, onSent }: { patient: PatientProfile; triage: TriageResult; match: FacilityMatch; need: string; onSent: (r: Referral) => void }) {
+function SendReferral({ patient, triage, match, need, onSent }: { patient: PatientProfile; triage: TriageResult; match: HospitalSearchResult; need: string; onSent: (r: Referral) => void }) {
   const [share, setShare] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -345,7 +390,7 @@ function SendReferral({ patient, triage, match, need, onSent }: { patient: Patie
   const symptoms = triage.symptoms_structured.map((s) => s.symptom)
   const d = triage.symptoms_structured[0]?.duration_days
   const reason = `${symptoms.join(', ')}${d ? ` for ${d === 1 ? 'today' : `${d} days`}` : ''}`
-  const needLabel = CARE_NEEDS.find((n) => n.q === need)?.label ?? need
+  const needLabel = CARE_NEEDS.find((c) => c.key === need)?.label ?? need
 
   async function send() {
     setBusy(true); setError(null)
@@ -409,22 +454,33 @@ const STATUS_VIEW: Record<string, { title: string; tone: 'sky' | 'brand' | 'rose
   cancelled: { title: 'Referral cancelled', tone: 'slate' },
 }
 
+const TONE_BORDER = {
+  brand: 'border-brand-200 border-l-brand-600', rose: 'border-rose-200 border-l-rose-600', amber: 'border-amber-200 border-l-amber-500',
+  sky: 'border-sky-200 border-l-sky-600', slate: 'border-slate-200 border-l-slate-400',
+}
+
+function PendingDot({ tone = 'sky' }: { tone?: 'sky' | 'rose' }) {
+  return (
+    <span className="relative flex size-2.5 shrink-0">
+      <span className={clsx('absolute inline-flex size-full animate-ping rounded-full opacity-75 motion-reduce:hidden', tone === 'rose' ? 'bg-rose-400' : 'bg-sky-400')} />
+      <span className={clsx('relative inline-flex size-2.5 rounded-full', tone === 'rose' ? 'bg-rose-600' : 'bg-sky-600')} />
+    </span>
+  )
+}
+
 export function ReferralStatusView({ referral, patient, onChooseAnother, onDone }: { referral: Referral; patient: PatientProfile; onChooseAnother: () => void; onDone: () => void }) {
   const mine = useResource<Referral[]>('/referrals/me', { poll: 2500 })
   const facilities = useResource<Facility[]>('/facilities')
   const r = mine.data?.find((x) => x.id === referral.id) ?? referral
   const name = shortFacility(facilities.data?.find((f) => f.id === r.destination_facility_id)?.name) || 'The hospital'
   const v = STATUS_VIEW[r.status] ?? STATUS_VIEW.pending
-  const [seen, setSeen] = useState(r.status)
-  useEffect(() => { if (r.status !== seen) setSeen(r.status) }, [r.status, seen])
 
   return (
     <>
-      <section key={seen} aria-live="polite" className={clsx('rounded-lg border border-l-4 bg-white p-4 animate-slide-up',
-        v.tone === 'brand' ? 'border-brand-200 border-l-brand-600' : v.tone === 'rose' ? 'border-rose-200 border-l-rose-600' : v.tone === 'amber' ? 'border-amber-200 border-l-amber-500' : v.tone === 'sky' ? 'border-sky-200 border-l-sky-600' : 'border-slate-200 border-l-slate-400')}>
+      <section key={r.status} aria-live="polite" className={clsx('rounded-lg border border-l-4 bg-white p-4 animate-slide-up', TONE_BORDER[v.tone])}>
         <div className="text-sm font-medium text-slate-500">{name} · {r.referral_number}</div>
         <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-slate-900">
-          {r.status === 'pending' && <span className="relative flex size-2.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-400 opacity-75 motion-reduce:hidden" /><span className="relative inline-flex size-2.5 rounded-full bg-sky-600" /></span>}
+          {r.status === 'pending' && <PendingDot />}
           {(r.status === 'accepted' || r.status === 'completed') && <CheckCircle2 className="size-5 text-brand-700" />}
           {r.status === 'rejected' && <XCircle className="size-5 text-rose-600" />}
           {v.title}
@@ -436,7 +492,7 @@ export function ReferralStatusView({ referral, patient, onChooseAnother, onDone 
             <div className="rounded-md bg-slate-900 py-3 text-center font-mono text-2xl font-semibold tracking-wider text-white">{patient.patient_number}</div>
           </div>
         )}
-        {r.facility_response_reason && <p className="mt-2 text-base text-slate-700">“{r.facility_response_reason}”</p>}
+        {r.facility_response_reason && r.status !== 'completed' && <p className="mt-2 text-base text-slate-700">“{r.facility_response_reason}”</p>}
         {r.status === 'completed' && <p className="mt-2 text-base text-slate-700">Your visit has started. You can follow it under Visits.</p>}
       </section>
 
@@ -445,6 +501,74 @@ export function ReferralStatusView({ referral, patient, onChooseAnother, onDone 
       )}
 
       {(r.status === 'rejected' || r.status === 'more_information') && <Button size="lg" className="w-full" onClick={onChooseAnother}>Choose another hospital</Button>}
+      <Button size="lg" variant="secondary" className="w-full" onClick={onDone}>Back to home</Button>
+    </>
+  )
+}
+
+/** Live view of an emergency request: which hospital is being asked, who declined, and the confirmed hospital + transport. */
+export function EmergencyStatusView({ request, patient, onDone }: { request: EmergencyRequest; patient: PatientProfile; onDone: () => void }) {
+  const live = useResource<EmergencyRequest>(`/emergency/requests/${request.id}`, { poll: 2500 })
+  const em = live.data ?? request
+  const current = em.candidate_facilities.find((c) => c.facility_id === em.current_candidate_facility_id)
+  const confirmed = em.candidate_facilities.find((c) => c.facility_id === em.confirmed_facility_id)
+  const waiting = em.status === 'awaiting_hospital_confirmation'
+  const noOne = !em.current_candidate_facility_id && !em.confirmed_facility_id
+
+  return (
+    <>
+      <section key={em.status + (em.current_candidate_facility_id ?? '')} aria-live="assertive"
+        className={clsx('rounded-lg border border-l-4 bg-white p-4 animate-slide-up', confirmed ? TONE_BORDER.brand : TONE_BORDER.rose)}>
+        <div className="text-sm font-medium text-slate-500">{em.emergency_type} · {em.emergency_number}</div>
+        {confirmed ? (
+          <>
+            <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-slate-900"><CheckCircle2 className="size-5 text-brand-700" />{shortFacility(confirmed.facility_name)} is ready for you</div>
+            <p className="mt-2 text-base text-slate-700">The hospital confirmed it can receive you and has been told you are coming.</p>
+          </>
+        ) : waiting && current ? (
+          <>
+            <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-slate-900"><PendingDot tone="rose" />Asking {shortFacility(current.facility_name)} to confirm</div>
+            <p className="mt-2 text-base text-slate-700">Chosen because it can treat this ({current.matched_capabilities.slice(0, 3).join(', ')}), {current.distance_km.toFixed(1)} km away. Keep your phone with you.</p>
+          </>
+        ) : (
+          <>
+            <div className="mt-1 text-lg font-semibold text-rose-800">No hospital has confirmed yet</div>
+            <p className="mt-2 text-base text-slate-700">Call 112 now. VITALIS keeps looking for a hospital that can take you.</p>
+          </>
+        )}
+      </section>
+
+      {em.transport && confirmed && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-2 text-base font-semibold text-slate-900"><Ambulance className="size-5 text-slate-500" />{em.transport.vehicle_type}</div>
+          <div className="mt-1 text-sm text-slate-600">{em.transport.provider_name} · <span className="font-mono">{em.transport.vehicle_callsign}</span></div>
+          <div className="mt-3 grid grid-cols-2 divide-x divide-slate-100 rounded-md bg-slate-50 text-center">
+            <div className="py-2"><div className="text-2xl font-semibold tabular">{em.transport.estimated_pickup_minutes} min</div><div className="text-xs text-slate-500">to pick you up</div></div>
+            <div className="py-2"><div className="text-2xl font-semibold tabular">{em.transport.estimated_hospital_arrival_minutes} min</div><div className="text-xs text-slate-500">to the hospital</div></div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Ambulance dispatch is simulated in this prototype.</p>
+        </section>
+      )}
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Hospitals VITALIS asked</h3>
+        <ol className="mt-2 space-y-2">
+          {em.candidate_facilities.map((c) => (
+            <li key={c.facility_id} className="flex items-center justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-slate-800">{shortFacility(c.facility_name)} <span className="text-slate-400">· {c.distance_km.toFixed(1)} km</span></span>
+              <span className={clsx('shrink-0 font-medium', c.confirmation_state === 'accepted' ? 'text-brand-800' : c.confirmation_state === 'declined' ? 'text-rose-700' : c.facility_id === em.current_candidate_facility_id ? 'text-sky-700' : 'text-slate-400')}>
+                {c.confirmation_state === 'accepted' ? 'Confirmed' : c.confirmation_state === 'declined' ? 'Can’t take you' : c.facility_id === em.current_candidate_facility_id ? 'Asking now' : 'Next if needed'}
+              </span>
+            </li>
+          ))}
+          {em.candidate_facilities.length === 0 && <li className="text-sm text-slate-500">No hospital reports the capabilities needed and is accepting emergencies.</li>}
+        </ol>
+      </section>
+
+      {(noOne || !confirmed) && (
+        <a href="tel:112" className="flex h-12 items-center justify-center gap-2 rounded-md bg-rose-700 text-base font-semibold text-white hover:bg-rose-800"><Phone className="size-5" />Call 112</a>
+      )}
+      {confirmed && <p className="text-center text-sm text-slate-600">Show your VITALIS ID on arrival: <span className="font-mono font-semibold text-slate-900">{patient.patient_number}</span></p>}
       <Button size="lg" variant="secondary" className="w-full" onClick={onDone}>Back to home</Button>
     </>
   )

@@ -10,7 +10,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { fmtDate, fmtDateTime, shortFacility, timeAgo } from '../lib/format'
 import { useResource } from '../lib/hooks'
-import type { Facility, PatientProfile, Referral, UnifiedRecord } from '../lib/types'
+import type { EmergencyRequest, Facility, PatientProfile, Referral, UnifiedRecord } from '../lib/types'
 
 interface PendingRequest { request_id: string; facility_name: string; requested_by: string; purpose: string; code: string | null; expires_at: string }
 interface AccessLog {
@@ -52,7 +52,8 @@ export default function PatientApp() {
   const [qr, setQr] = useState<string | null>(null)
   const referrals = useResource<Referral[]>('/referrals/me', { poll: 4000 })
   const facilities = useResource<Facility[]>('/facilities')
-  const [care, setCare] = useState<null | 'new' | Referral>(null)
+  const emergencies = useResource<EmergencyRequest[]>('/emergency/requests', { poll: 4000 })
+  const [care, setCare] = useState<null | 'new' | Referral | { emergency: EmergencyRequest }>(null)
 
   async function showQr() {
     if (!me.data) return
@@ -69,6 +70,8 @@ export default function PatientApp() {
   const req = pending.data?.[0]
   const active = log.data?.consents.filter((c) => c.active) ?? []
   const openReferral = referrals.data?.find((r) => r.status === 'pending' || r.status === 'accepted' || r.status === 'more_information')
+  const openEmergency = emergencies.data?.find((e) => ['awaiting_hospital_confirmation', 'matching', 'confirmed', 'transport_coordinated', 'en_route'].includes(e.status)
+    && Date.now() - new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(e.created_at) ? e.created_at : e.created_at + 'Z').getTime() < 12 * 36e5)
   const facilityName = (id: string) => shortFacility(facilities.data?.find((f) => f.id === id)?.name)
 
   return (
@@ -80,7 +83,10 @@ export default function PatientApp() {
         </header>
 
         {care && me.data ? (
-          <CareConnect patient={me.data} initialReferral={care === 'new' ? null : care} onExit={() => { setCare(null); referrals.reload(true); log.reload(true) }} />
+          <CareConnect patient={me.data}
+            initialReferral={care === 'new' || 'emergency' in care ? null : care}
+            initialEmergency={care !== 'new' && 'emergency' in care ? care.emergency : null}
+            onExit={() => { setCare(null); referrals.reload(true); emergencies.reload(true); log.reload(true) }} />
         ) : (
         <div className="space-y-4 px-4 py-5">
           <div>
@@ -88,8 +94,18 @@ export default function PatientApp() {
             <div className="text-2xl font-semibold text-slate-900">{user?.full_name}</div>
           </div>
 
-          {/* CareConnect: an open referral takes priority over starting a new check */}
-          {openReferral ? (
+          {/* CareConnect: an open emergency, then an open referral, take priority over starting a new check */}
+          {openEmergency ? (
+            <button onClick={() => setCare({ emergency: openEmergency })} className={clsx('block w-full rounded-lg border border-l-4 bg-white p-4 text-left animate-slide-up', openEmergency.confirmed_facility_id ? 'border-brand-200 border-l-brand-600' : 'border-rose-200 border-l-rose-600')}>
+              <div className="text-sm text-slate-500">Emergency help · {openEmergency.emergency_type}</div>
+              <div className="mt-0.5 flex items-center justify-between gap-2 text-base font-semibold text-slate-900">
+                {openEmergency.confirmed_facility_id
+                  ? `${facilityName(openEmergency.confirmed_facility_id)} is ready for you`
+                  : openEmergency.current_candidate_facility_id ? `Asking ${facilityName(openEmergency.current_candidate_facility_id)} to confirm` : 'No hospital has confirmed yet'}
+                <ChevronRight className="size-5 shrink-0 text-slate-400" />
+              </div>
+            </button>
+          ) : openReferral ? (
             <button onClick={() => setCare(openReferral)} className={clsx('block w-full rounded-lg border border-l-4 bg-white p-4 text-left animate-slide-up', openReferral.status === 'accepted' ? 'border-brand-200 border-l-brand-600' : 'border-sky-200 border-l-sky-600')}>
               <div className="text-sm text-slate-500">Your referral to {facilityName(openReferral.destination_facility_id)}</div>
               <div className="mt-0.5 flex items-center justify-between gap-2 text-base font-semibold text-slate-900">

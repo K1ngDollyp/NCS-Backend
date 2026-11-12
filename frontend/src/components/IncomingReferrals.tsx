@@ -7,12 +7,13 @@ import { useResource } from '../lib/hooks'
 import type { LookupResult, PatientProfile, Referral } from '../lib/types'
 import { Button, Card, ErrorNote, Field, Modal, Textarea, useToast } from './ui'
 
-export interface ArrivalTarget { patient_id: string; full_name: string; patient_number: string; complaint: string; referralId: string }
+export interface ArrivalTarget { patient_id: string; full_name: string; patient_number: string; complaint: string; referralId?: string; emergencyId?: string; emergency?: boolean }
 
 /** Incoming CareConnect referrals for this hospital: confirm (or decline with a reason), then check the patient in. */
 export function IncomingReferrals({ facilityId, onArrived }: { facilityId: string; onArrived: (t: ArrivalTarget) => void }) {
   const list = useResource<Referral[]>(`/referrals/facility/${facilityId}`, { poll: 4000 })
-  const open = (list.data ?? []).filter((r) => r.status === 'pending' || r.status === 'accepted' || r.status === 'more_information')
+  // Emergency-linked referrals are handled in the emergency inbox.
+  const open = (list.data ?? []).filter((r) => (r.status === 'pending' || r.status === 'accepted' || r.status === 'more_information') && !r.clinical_reason.startsWith('[CARECONNECT EMERGENCY]'))
   const [declining, setDeclining] = useState<Referral | null>(null)
   if (!list.data || open.length === 0) return null
   return (

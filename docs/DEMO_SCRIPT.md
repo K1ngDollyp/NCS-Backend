@@ -25,11 +25,16 @@
 
 ### 1. At home: the patient's phone (1.5 min): **Patient's phone**
 - **Check my symptoms**. Tap **Headache**, **Blurred vision**, **Excessive thirst**, **Frequent urination**; leave **About a week**. Tap **Check my symptoms**.
-- **Say:** "The emergency check is deterministic rules, not AI, so it never waits on a model. Pick *Chest pain* and it tells you to call 112 immediately."
+- **Say:** "The emergency check is deterministic rules, not AI, so it never waits on a model."
 - **Find a hospital that can see me**, then tap **Heart and blood pressure**.
 - **Say:** "This is not a directory. State Hospital is closer to her, but it doesn't report a heart and blood pressure service, so VITALIS leaves it out and says why. Availability is what the hospital itself reported, with when it was last confirmed." Open **Why this hospital** to show the transparent score.
 - **Ask FMC Abeokuta to see me**. Point at **Share my records from other hospitals**: "Only FMC, for 24 hours, revocable. This is her consent." Tap **Share and send to FMC Abeokuta**.
 - The phone now says **Waiting for the hospital to confirm**. **Say:** "She doesn't travel until the hospital confirms it can take her."
+
+### Optional (45s): emergency coordination. Do this only if time allows, and reset afterwards
+- On the phone: **Check my symptoms** → **Chest pain** → **Find a hospital that will take me now**. The phone shows **Asking FMC Abeokuta to confirm** and the list of hospitals VITALIS will try next.
+- As **Reception**: the red **Emergency requests** card appears. **Say:** "VITALIS never sends a patient to a hospital that hasn't said yes." Click **We can receive this patient**: the phone shows the ambulance and ETA (simulated dispatch).
+- For the decline story, type *active labour* in "Anything else?" instead: FMC clicks **Can't take** → the phone instantly switches to **Asking State Hospital, Sokenu**.
 
 ### 2. Reception (45s): click **1 Reception**
 - **Incoming referrals** is at the top: her symptoms, "Care needed: Heart and blood pressure", and **Patient shared their records from 2 other hospitals**.
@@ -76,7 +81,7 @@
 | Folake not in a queue | A previous rehearsal used her up. Log in as **Medical director**, then **Reset demo data** (or run `.\start-demo.ps1`) |
 | Code expired (10 min) | Click **Resend** in the code dialog |
 | Projector too small | Browser zoom 80–90% |
-| Folake's phone still shows an old referral | Reset demo data (each rehearsal leaves a completed referral and a 24 h consent behind) |
+| Folake's phone still shows an old referral or emergency | Reset demo data (each rehearsal leaves a completed referral and a 24 h consent behind) |
 
 ---
 

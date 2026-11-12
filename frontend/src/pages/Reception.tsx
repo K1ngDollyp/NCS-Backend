@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { ArrowRight, Building2, CheckCircle2, Clock, HeartPulse, Lock, Search, ShieldCheck, Siren, Smartphone, UserPlus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { ConsentFlow } from '../components/ConsentFlow'
+import { EmergencyInbox } from '../components/EmergencyInbox'
 import { IncomingReferrals } from '../components/IncomingReferrals'
 import { FacilityChip } from '../components/clinical'
 import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Modal, PageHeader, PriorityBadge, Select, SkeletonList, Stat, StatusBadge, Textarea, useToast } from '../components/ui'
@@ -44,6 +45,7 @@ export default function Reception() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4">
+          {user?.facility_id && <EmergencyInbox facilityId={user.facility_id} onArrived={(t) => setVisitFor(t)} />}
           {user?.facility_id && <IncomingReferrals facilityId={user.facility_id} onArrived={(t) => setVisitFor(t)} />}
           <Card className="p-4 sm:p-5">
             <form onSubmit={(e: FormEvent) => { e.preventDefault(); search() }} className="flex flex-col gap-2 sm:flex-row">
@@ -174,7 +176,7 @@ export default function Reception() {
   )
 }
 
-type VisitTarget = { patient_id: string; full_name: string; patient_number: string; complaint?: string; referralId?: string }
+type VisitTarget = { patient_id: string; full_name: string; patient_number: string; complaint?: string; referralId?: string; emergencyId?: string; emergency?: boolean }
 
 function StartVisit({ target, onClose, onDone }: { target: VisitTarget | null; onClose: () => void; onDone: (name: string) => void }) {
   const { user } = useAuth()
@@ -188,7 +190,7 @@ function StartVisit({ target, onClose, onDone }: { target: VisitTarget | null; o
   // A referral arrives with its reason already captured on the patient's phone.
   if (target !== loadedFor) {
     setLoadedFor(target)
-    if (target?.referralId) { setComplaint(target.complaint ?? ''); setVisitType('referred') }
+    if (target?.referralId || target?.emergencyId) { setComplaint(target.complaint ?? ''); setVisitType('referred'); setEmergency(!!target.emergency) }
   }
 
   async function submit(e: FormEvent) {
@@ -205,6 +207,7 @@ function StartVisit({ target, onClose, onDone }: { target: VisitTarget | null; o
         },
       })
       if (target.referralId) await api(`/referrals/${target.referralId}/status`, { method: 'PATCH', json: { status: 'completed', facility_response_reason: 'Patient arrived and visit started' } })
+      if (target.emergencyId) await api(`/emergency/requests/${target.emergencyId}/status`, { method: 'PATCH', json: { status: 'handed_over', details: 'Patient arrived and handed over to the emergency team' } })
       setComplaint(''); setEmergency(false); setVisitType('walk_in')
       onDone(target.full_name)
     } catch (err) {
