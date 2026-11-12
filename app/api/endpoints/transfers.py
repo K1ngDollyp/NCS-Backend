@@ -17,7 +17,7 @@ from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/transfers", tags=["VITALIS TRANSFER - Inter-Hospital Record Exchange"])
 
-# ----------------- 1. Initiate Inter-Hospital Transfer (Hospital A) -----------------
+# Initiate Inter-Hospital Transfer (Hospital A)
 @router.post("", response_model=TransferResponse)
 def initiate_transfer(
     transfer_in: TransferCreate,
@@ -97,7 +97,7 @@ def initiate_transfer(
 
     return transfer
 
-# ----------------- Patient Consent -----------------
+# Patient Consent
 @router.post("/{id}/consent", response_model=TransferResponse)
 def record_transfer_consent(
     id: str,
@@ -125,7 +125,7 @@ def record_transfer_consent(
 
     return transfer
 
-# ----------------- Dispatch Transfer Package -----------------
+# Dispatch Transfer Package
 @router.post("/{id}/send")
 def send_transfer_package(
     id: str,
@@ -165,7 +165,7 @@ def send_transfer_package(
         "expires_at": transfer.token_expires_at
     }
 
-# ----------------- 4. Receiving Hospital (Hospital B) Access & Redemption -----------------
+# Receiving Hospital (Hospital B) Access & Redemption
 @router.post("/redeem")
 def redeem_transfer_package(
     redeem_in: TransferRedeemRequest,

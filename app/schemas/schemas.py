@@ -3,10 +3,11 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from app.models.models import (
     UserRole, EncounterPriority, VisitType, EncounterStatus,
-    OrderDepartment, OrderStatus, ReferralStatus, TransferStatus, InsightReviewStatus
+    OrderDepartment, OrderStatus, ReferralStatus, TransferStatus, InsightReviewStatus,
+    EmergencyRequestStatus, HomeVisitStatus
 )
 
-# ----------------- Auth & Users -----------------
+# Auth & Users
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -43,7 +44,7 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Facilities & Services -----------------
+# Facilities & Services
 class ServiceCreate(BaseModel):
     service_code: str
     service_name: str
@@ -88,7 +89,7 @@ class FacilitySuitabilityResult(BaseModel):
     score_breakdown: Dict[str, float]
     recommendation_rationale: str
 
-# ----------------- Patients -----------------
+# Patients
 class PatientCreate(BaseModel):
     first_name: str
     last_name: str
@@ -124,7 +125,7 @@ class PatientResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Family History -----------------
+# Family History
 class FamilyHistoryCreate(BaseModel):
     relationship_type: str
     condition: str
@@ -145,7 +146,7 @@ class FamilyHistoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Encounters & Hospital Workflow -----------------
+# Encounters & Hospital Workflow
 class EncounterCreate(BaseModel):
     patient_id: str
     facility_id: str
@@ -226,7 +227,7 @@ class ClinicalNoteResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Investigation Orders & Results -----------------
+# Investigation Orders & Results
 class InvestigationOrderCreate(BaseModel):
     department: OrderDepartment
     test_or_modality: str
@@ -290,7 +291,7 @@ class ConsolidatedEncounterResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Triage -----------------
+# Triage
 class SymptomInput(BaseModel):
     symptom: str
     duration_days: Optional[int] = 1
@@ -315,7 +316,7 @@ class TriageSessionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Referrals -----------------
+# Referrals
 class ReferralCreate(BaseModel):
     patient_id: str
     destination_facility_id: str
@@ -346,7 +347,7 @@ class ReferralResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Consent & QR Grants -----------------
+# Consent & QR Grants
 class ConsentCreate(BaseModel):
     patient_id: str
     grantee_facility_id: Optional[str] = None
@@ -366,7 +367,7 @@ class QRRedeemRequest(BaseModel):
     token: str  # Raw token read from QR
     facility_id: str
 
-# ----------------- Inter-Hospital Transfer -----------------
+# Inter-Hospital Transfer
 class TransferCreate(BaseModel):
     patient_id: str
     recipient_facility_id: str
@@ -395,7 +396,7 @@ class TransferResponse(BaseModel):
 class TransferRedeemRequest(BaseModel):
     transfer_token: str
 
-# ----------------- Intelligence & Clinical Decision Support -----------------
+# Intelligence & Clinical Decision Support
 class MedicationSafetyCheckRequest(BaseModel):
     patient_id: str
     proposed_medications: List[str]
@@ -430,7 +431,7 @@ class InsightReviewRequest(BaseModel):
     rationale: Optional[str] = None
     edited_content: Optional[str] = None
 
-# ----------------- NCS ML Model Schemas -----------------
+# NCS ML Model Schemas
 class HeartDiseaseMLInput(BaseModel):
     age: int = Field(..., ge=1, le=120, description="Age in years")
     sex: int = Field(..., ge=0, le=1, description="1 = Male, 0 = Female")
@@ -466,5 +467,368 @@ class MLPredictionResponse(BaseModel):
         "Clinical decision support output only. Clinician review, independent evaluation, "
         "and diagnostic verification are required. Does not replace clinical judgment."
     )
+
+
+# VITALIS CareConnect & Clinical AI Schemas
+# Patient Dashboard (5 Primary Actions)
+class CareConnectActionItem(BaseModel):
+    action_key: str
+    title: str
+    description: str
+    endpoint: str
+    is_emergency: bool = False
+
+class CareConnectDashboardResponse(BaseModel):
+    patient_id: str
+    patient_name: str
+    headline: str = "How can we help you today?"
+    subheadline: str = "Access medical assistance, connect with doctors and find the right healthcare facility."
+    primary_actions: List[CareConnectActionItem]
+    active_emergency_request_id: Optional[str] = None
+    upcoming_appointments_count: int = 0
+    active_home_visit_id: Optional[str] = None
+
+# CareConnect Assistant ("Talk to AI")
+class AssistantConversationCreate(BaseModel):
+    patient_id: str
+    title: Optional[str] = "CareConnect Symptom Guidance"
+    modality: str = "text"  # text, voice
+    history_access_permitted: bool = False
+    initial_message: Optional[str] = None
+
+class AssistantMessageCreate(BaseModel):
+    content: str
+    modality: str = "text"
+
+class AssistantMessageResponse(BaseModel):
+    id: str
+    conversation_id: str
+    sender_role: str
+    content: str
+    red_flags_triggered: List[str] = []
+    structured_symptoms: List[str] = []
+    recommended_professional: Optional[str] = None
+    disclaimer: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AssistantConversationResponse(BaseModel):
+    id: str
+    patient_id: str
+    title: str
+    modality: str
+    history_access_permitted: bool
+    urgency_level: str
+    recommended_professional_type: Optional[str] = None
+    recommended_next_action: Optional[str] = None
+    status: str
+    created_at: datetime
+    messages: List[AssistantMessageResponse] = []
+
+    class Config:
+        from_attributes = True
+
+# Doctors, Availability, Appointments & Telemedicine ("Find a Doctor")
+class DoctorAvailabilitySlotResponse(BaseModel):
+    id: str
+    day_of_week: str
+    start_time: str
+    end_time: str
+    consultation_mode: str
+    is_booked: bool
+
+    class Config:
+        from_attributes = True
+
+class DoctorProfileResponse(BaseModel):
+    id: str
+    user_id: str
+    facility_id: Optional[str] = None
+    full_name: str
+    specialization: str
+    qualifications: str
+    license_number: str
+    verification_status: str
+    years_of_experience: int
+    bio: Optional[str] = None
+    offers_telemedicine: bool
+    offers_home_visits: bool
+    consultation_fee_ngn: float
+    languages: List[str] = []
+    rating: float
+    is_available_now: bool
+
+    class Config:
+        from_attributes = True
+
+class AppointmentCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    scheduled_time: str
+    consultation_mode: str = "video"  # video, audio, chat, in_person
+    reason_for_visit: str
+    shared_record_ids: List[str] = []
+
+class AppointmentResponse(BaseModel):
+    id: str
+    appointment_number: str
+    patient_id: str
+    doctor_id: str
+    scheduled_time: str
+    consultation_mode: str
+    reason_for_visit: str
+    shared_record_ids: List[str] = []
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConsultationSessionCreate(BaseModel):
+    channel_mode: str = "video"  # video, audio_fallback, messaging
+
+class ConsultationMessageCreate(BaseModel):
+    content: str
+    attachment_ref: Optional[str] = None
+
+class ConsultationPrescriptionSignRequest(BaseModel):
+    doctor_recommendations: str
+    medications: List[Dict[str, str]]  # [{"drug": "...", "dosage": "...", "duration": "..."}]
+
+class ConsultationMessageResponse(BaseModel):
+    id: str
+    session_id: str
+    sender_id: str
+    sender_role: str
+    content: str
+    attachment_ref: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConsultationSessionResponse(BaseModel):
+    id: str
+    appointment_id: str
+    patient_id: str
+    doctor_id: str
+    channel_mode: str
+    room_token: str
+    session_url: str
+    is_recorded: bool
+    doctor_recommendations: Optional[str] = None
+    signed_prescription: Optional[Dict[str, Any]] = None
+    signed_by_doctor_id: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    status: str
+    started_at: datetime
+    messages: List[ConsultationMessageResponse] = []
+
+    class Config:
+        from_attributes = True
+
+# Home Visits ("Home visit")
+class HomeVisitRequestCreate(BaseModel):
+    patient_id: str
+    professional_type_needed: str = "Medical Doctor"
+    symptoms_or_reason: str
+    address: str
+    latitude: float = 7.1500
+    longitude: float = 3.3500
+
+class HomeVisitStatusUpdate(BaseModel):
+    status: HomeVisitStatus
+    tracking_status: Optional[str] = None
+    estimated_arrival_minutes: Optional[int] = None
+    visit_notes: Optional[str] = None
+
+class VisitAssignmentResponse(BaseModel):
+    id: str
+    provider_user_id: str
+    provider_name: str
+    provider_role: str
+    provider_license: str
+    estimated_arrival_minutes: int
+    service_fee_ngn: float
+    tracking_status: str
+    visit_notes: Optional[str] = None
+    assigned_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class HomeVisitRequestResponse(BaseModel):
+    id: str
+    request_number: str
+    patient_id: str
+    professional_type_needed: str
+    symptoms_or_reason: str
+    address: str
+    latitude: float
+    longitude: float
+    urgency_flag: bool
+    redirected_emergency_reason: Optional[str] = None
+    status: HomeVisitStatus
+    created_at: datetime
+    assignment: Optional[VisitAssignmentResponse] = None
+
+    class Config:
+        from_attributes = True
+
+# Hospital Capabilities & Intelligent Hospital Search ("Find a hospital")
+class HospitalCapabilityUpdate(BaseModel):
+    services: List[str]
+    specialists: List[str]
+    equipment: List[str]
+    has_operating_theatre: bool = False
+    has_blood_bank: bool = False
+    has_icu: bool = False
+    has_nicu: bool = False
+    reported_by: Optional[str] = None
+
+class HospitalAvailabilityUpdate(BaseModel):
+    emergency_acceptance_status: str = "accepting"  # accepting, limited, not_accepting, unknown
+    available_general_beds: int = 10
+    available_icu_beds: int = 2
+    available_maternity_beds: int = 4
+    specialists_on_duty: List[str] = []
+    expected_wait_minutes: int = 10
+    notes: Optional[str] = None
+    reported_by: Optional[str] = None
+
+class HospitalCapabilitySearchResult(BaseModel):
+    facility: FacilityResponse
+    suitability_score: float
+    distance_km: float
+    matched_capabilities: List[str]
+    acceptance_status: str
+    freshness_label: str
+    last_confirmed_at: Optional[datetime] = None
+    reported_by: str
+    expected_wait_minutes: Optional[int] = None
+    score_breakdown: Dict[str, float]
+    why_this_facility: str
+
+# Emergency Referral & Coordination ("Emergency assistance")
+class EmergencyRequestCreate(BaseModel):
+    patient_id: str
+    initiated_by_role: str = "patient"  # patient, relative, clinician
+    emergency_type: str
+    presenting_complaint: str
+    required_capabilities: List[str] = []
+    patient_latitude: float = 7.1500
+    patient_longitude: float = 3.3500
+    patient_address: Optional[str] = None
+
+class EmergencyHospitalConfirmation(BaseModel):
+    facility_id: str
+    accepted: bool
+    reason_or_notes: Optional[str] = None
+
+class EmergencyStatusUpdate(BaseModel):
+    status: EmergencyRequestStatus
+    details: Optional[str] = None
+
+class EmergencyEventResponse(BaseModel):
+    id: str
+    event_type: str
+    facility_id: Optional[str] = None
+    details: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+class TransportAssignmentResponse(BaseModel):
+    id: str
+    provider_name: str
+    vehicle_type: str
+    vehicle_callsign: str
+    dispatch_status: str
+    estimated_pickup_minutes: int
+    estimated_hospital_arrival_minutes: int
+    contact_phone: str
+    assigned_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class EmergencyRequestResponse(BaseModel):
+    id: str
+    emergency_number: str
+    patient_id: str
+    initiated_by_role: str
+    emergency_type: str
+    presenting_complaint: str
+    required_capabilities: List[str]
+    patient_latitude: float
+    patient_longitude: float
+    patient_address: Optional[str]
+    red_flags_detected: List[str]
+    candidate_facilities: List[Dict[str, Any]]
+    current_candidate_facility_id: Optional[str]
+    confirmed_facility_id: Optional[str]
+    linked_referral_id: Optional[str]
+    status: EmergencyRequestStatus
+    created_at: datetime
+    events: List[EmergencyEventResponse] = []
+    transport: Optional[TransportAssignmentResponse] = None
+
+    class Config:
+        from_attributes = True
+
+# Clinical AI & Patient Documents
+class PatientDocumentCreate(BaseModel):
+    filename: str
+    document_type: str = "lab_report"
+    mime_type: str = "application/pdf"
+    extracted_text: Optional[str] = None
+    ocr_quality: str = "high"
+    provenance: str = "patient_uploaded"
+
+class PatientDocumentResponse(BaseModel):
+    id: str
+    patient_id: str
+    filename: str
+    document_type: str
+    mime_type: str
+    private_object_key: str
+    extracted_text: Optional[str]
+    ocr_quality: str
+    provenance: str
+    is_outdated_flag: bool
+    has_conflict_flag: bool
+    malware_scan_status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ClinicalAIAnalysisResponse(BaseModel):
+    id: str
+    encounter_id: str
+    patient_id: str
+    summary: str
+    differential_list: List[Dict[str, Any]]
+    supporting_evidence: List[str]
+    contradicting_evidence: List[str]
+    missing_info_flags: List[str]
+    medication_considerations: List[Dict[str, Any]]
+    red_flags: List[str]
+    source_documents: List[str]
+    model_version: str
+    reference_set_version: str
+    review_status: InsightReviewStatus
+    reviewed_by_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    clinician_edits: Optional[str] = None
+    safety_label: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 
 

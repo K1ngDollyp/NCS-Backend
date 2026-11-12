@@ -67,7 +67,7 @@ class MedicationSafetyChecker:
         current_clean = [c.lower().strip() for c in current_medications]
         conditions_clean = [cond.lower().strip() for cond in (patient_conditions or [])]
 
-        # 1. Allergy conflicts check
+        # Allergy conflicts check
         for prop in proposed_clean:
             for allergy in allergies_clean:
                 # Direct match
@@ -93,7 +93,7 @@ class MedicationSafetyChecker:
                                 flagged = True
                                 break
 
-        # 2. Drug-Drug Interactions
+        # Drug-Drug Interactions
         all_meds = proposed_clean + current_clean
         for rule in KNOWN_DRUG_INTERACTIONS:
             da = rule["drug_a"].lower()
@@ -108,7 +108,7 @@ class MedicationSafetyChecker:
                     "clinical_significance": rule["detail"]
                 })
 
-        # 3. Disease-Drug Contraindications
+        # Disease-Drug Contraindications
         for prop in proposed_clean:
             if "peptic ulcer" in conditions_clean or "gastric ulcer" in conditions_clean:
                 if any(nsaid in prop for nsaid in ["aspirin", "ibuprofen", "diclofenac", "piroxicam"]):

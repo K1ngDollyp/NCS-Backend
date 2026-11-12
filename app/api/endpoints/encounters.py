@@ -9,16 +9,19 @@ from app.models.models import (
     Encounter, ReceptionIntake, NursingObservation, ClinicalNote, 
     InvestigationOrder, LabResult, RadiologyReport, Patient, Facility, 
     User, UserRole, EncounterStatus, EncounterPriority, OrderStatus,
-    OrderDepartment, get_utc_now
+    OrderDepartment, ClinicalAIAnalysis, PatientDocument, InsightReviewStatus, get_utc_now
 )
 from app.schemas.schemas import (
     EncounterCreate, ConsolidatedEncounterResponse, 
     NursingObservationsCreate, NursingObservationResponse,
     ClinicalNoteCreate, ClinicalNoteResponse,
     InvestigationOrderCreate, InvestigationOrderResponse,
-    LabResultCreate, RadiologyReportCreate
+    LabResultCreate, RadiologyReportCreate,
+    ClinicalAIAnalysisResponse
 )
 from app.engines.triage.rules import check_vital_warning
+from app.services.intelligence import IntelligenceService
+from app.services.medication_safety import MedicationSafetyChecker
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/encounters", tags=["Centralized Hospital Encounters"])
@@ -84,7 +87,7 @@ def format_consolidated_encounter(enc: Encounter) -> ConsolidatedEncounterRespon
         investigation_orders=orders_data
     )
 
-# ----------------- 5.1 Reception: Open Encounter & Intake -----------------
+# Reception: Open Encounter & Intake
 @router.post("", response_model=ConsolidatedEncounterResponse)
 def open_encounter(
     encounter_in: EncounterCreate,
@@ -147,7 +150,7 @@ def open_encounter(
 
     return format_consolidated_encounter(new_encounter)
 
-# ----------------- Consolidated Encounter Lookup -----------------
+# Consolidated Encounter Lookup
 @router.get("/{id}", response_model=ConsolidatedEncounterResponse)
 def get_encounter_by_id(
     id: str,
@@ -175,7 +178,7 @@ def get_encounter_by_id(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.2 Nursing: Vital Signs & Warning Flags -----------------
+# Nursing: Vital Signs & Warning Flags
 @router.post("/{id}/observations", response_model=ConsolidatedEncounterResponse)
 def record_nursing_observations(
     id: str,
@@ -228,7 +231,7 @@ def record_nursing_observations(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.3 Doctor: Consultation Notes & AI-Assisted Review -----------------
+# Doctor: Consultation Notes & AI-Assisted Review
 @router.post("/{id}/clinical-notes", response_model=ConsolidatedEncounterResponse)
 def record_clinical_note(
     id: str,
@@ -282,7 +285,7 @@ def record_clinical_note(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.3 Doctor: Order Investigations -----------------
+# Doctor: Order Investigations
 @router.post("/{id}/investigation-orders", response_model=ConsolidatedEncounterResponse)
 def place_investigation_order(
     id: str,
@@ -328,7 +331,7 @@ def place_investigation_order(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- Departmental Work Queues -----------------
+# Departmental Work Queues
 @router.get("/queue/{department}", response_model=List[ConsolidatedEncounterResponse])
 def get_department_work_queue(
     department: str,
@@ -370,4 +373,138 @@ def get_department_work_queue(
         ).order_by(Encounter.opened_at.desc()).limit(50).all()
 
     return [format_consolidated_encounter(e) for e in encounters]
+
+
+# Reception Intake Update on Existing Encounter
+@router.post("/{id}/reception-intake", response_model=ConsolidatedEncounterResponse)
+def capture_or_update_reception_intake(
+    id: str,
+    presenting_complaint: str,
+    arrival_mode: str = "walk_in",
+    referral_source: Optional[str] = None,
+    is_emergency_flag: bool = False,
+    administrative_notes: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([
+        UserRole.RECEPTION, UserRole.NURSE, UserRole.DOCTOR, UserRole.FACILITY_ADMIN
+    ]))
+):
+    encounter = db.query(Encounter).filter(Encounter.id == id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+
+    if encounter.reception_intake:
+        encounter.reception_intake.presenting_complaint = presenting_complaint
+        encounter.reception_intake.arrival_mode = arrival_mode
+        encounter.reception_intake.referral_source = referral_source
+        encounter.reception_intake.is_emergency_flag = is_emergency_flag
+        encounter.reception_intake.administrative_notes = administrative_notes
+    else:
+        intake = ReceptionIntake(
+            encounter_id=encounter.id,
+            presenting_complaint=presenting_complaint,
+            arrival_mode=arrival_mode,
+            referral_source=referral_source,
+            is_emergency_flag=is_emergency_flag,
+            administrative_notes=administrative_notes,
+            captured_by=current_user.id
+        )
+        db.add(intake)
+
+    if is_emergency_flag:
+        encounter.priority = EncounterPriority.EMERGENCY
+    if encounter.status == EncounterStatus.REGISTERED:
+        encounter.status = EncounterStatus.AWAITING_NURSING
+
+    db.commit()
+    db.refresh(encounter)
+    return format_consolidated_encounter(encounter)
+
+
+# Doctor-Side VITALIS AI Clinical Assistant
+@router.post("/{id}/ai/clinical-review", response_model=ClinicalAIAnalysisResponse)
+def run_clinical_ai_review(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR]))
+):
+    """
+    Doctor-only VITALIS AI Clinical Assistant.
+    Consolidates complaint, vitals, notes, allergies, medications, results, and uploaded documents
+    into a versioned draft artifact (never auto-signed).
+    """
+    encounter = db.query(Encounter).filter(Encounter.id == id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+
+    patient = encounter.patient
+    vitals = encounter.nursing_observations
+    family_hist = patient.family_history
+    docs = db.query(PatientDocument).filter(PatientDocument.patient_id == patient.id).all()
+
+    diff_data = IntelligenceService.generate_encounter_differential(
+        encounter=encounter,
+        patient=patient,
+        vitals=vitals,
+        family_history=family_hist
+    )
+
+    med_safety = MedicationSafetyChecker.check_medication_safety(
+        proposed_meds=["Artemether-Lumefantrine", "Paracetamol"],
+        patient_allergies=patient.allergies or [],
+        current_medications=patient.current_medications or [],
+        patient_conditions=patient.chronic_conditions or []
+    )
+
+    analysis = ClinicalAIAnalysis(
+        encounter_id=encounter.id,
+        patient_id=patient.id,
+        requested_by_id=current_user.id,
+        summary=diff_data["summary_of_findings"],
+        differential_list=diff_data["possible_differentials"],
+        supporting_evidence=diff_data["supporting_evidence"],
+        contradicting_evidence=diff_data["conflicting_evidence"],
+        missing_info_flags=diff_data["missing_data_recommendations"],
+        medication_considerations=[
+            {
+                "advisory_options": ["Artemether-Lumefantrine (if Malaria RDT positive)", "Paracetamol (symptomatic relief)"],
+                "allergy_conflicts": med_safety["allergy_conflicts"],
+                "drug_interactions": med_safety["drug_interactions"],
+                "contraindications": med_safety["contraindications_and_warnings"],
+                "note": "Advisory only — requires licensed doctor's explicit signed action."
+            }
+        ],
+        red_flags=diff_data["red_flags_detected"],
+        source_documents=[d.filename for d in docs],
+        model_version=diff_data["model_version"],
+        reference_set_version="NG-STG-2026.1",
+        review_status=InsightReviewStatus.PENDING
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+
+    log_audit_event(
+        db,
+        action="CLINICAL_AI_REVIEW_GENERATED",
+        resource_type="clinical_ai_analysis",
+        resource_id=analysis.id,
+        actor_id=current_user.id,
+        patient_id=patient.id,
+        encounter_id=encounter.id
+    )
+
+    return analysis
+
+
+@router.get("/{id}/ai/analyses", response_model=List[ClinicalAIAnalysisResponse])
+def list_encounter_ai_analyses(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.FACILITY_ADMIN]))
+):
+    return db.query(ClinicalAIAnalysis).filter(
+        ClinicalAIAnalysis.encounter_id == id
+    ).order_by(ClinicalAIAnalysis.created_at.desc()).all()
+
 

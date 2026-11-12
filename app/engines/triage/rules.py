@@ -37,6 +37,13 @@ RED_FLAGS = [
         "urgency": "EMERGENCY_RED",
         "service": "Emergency Medicine / Infectious Disease",
         "guidance": "CRITICAL EMERGENCY: Meningeal signs detected. Urgent lumbar puncture and intravenous antimicrobials indicated."
+    },
+    {
+        "keywords": ["active labour", "active labor", "obstetric emergency", "pregnant bleeding", "eclampsia", "convulsions in pregnancy", "cord prolapse"],
+        "flag": "Acute Obstetric Emergency",
+        "urgency": "EMERGENCY_RED",
+        "service": "Emergency Obstetrics & Gynaecology / Maternity Theatre",
+        "guidance": "CRITICAL OBSTETRIC EMERGENCY: Requires immediate transport to a hospital with emergency obstetric services, C-section theatre, and blood transfusion capability."
     }
 ]
 
