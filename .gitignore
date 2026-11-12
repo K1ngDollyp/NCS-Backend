@@ -69,7 +69,8 @@ logs/
 tmp/
 temp/
 
-# Local-only files & docs
+# Local-only files, docs & tests
 README.md
 docs/
 scripts/
+tests/
