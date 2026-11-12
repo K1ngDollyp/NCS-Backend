@@ -43,10 +43,6 @@ from app.services.audit import log_audit_event
 router = APIRouter(tags=["VITALIS CareConnect - Patient Access & Emergency Navigation"])
 
 
-# =================================================================================
-# 0. PATIENT CARECONNECT CENTRAL DASHBOARD (5 Primary Actions)
-# =================================================================================
-
 @router.get("/careconnect/dashboard", response_model=CareConnectDashboardResponse)
 def get_careconnect_patient_dashboard(
     patient_id: Optional[str] = None,
@@ -139,10 +135,6 @@ def get_careconnect_patient_dashboard(
         active_home_visit_id=active_visit.id if active_visit else None
     )
 
-
-# =================================================================================
-# 1. TALK TO AI: CareConnect Assistant (Text/Voice + Deterministic Safety Rules)
-# =================================================================================
 
 def _evaluate_assistant_turn(
     user_text: str,
@@ -345,10 +337,6 @@ def post_assistant_message(
 
     return conv
 
-
-# =================================================================================
-# 2. FIND A DOCTOR: Discovery, Availability, Appointments & Telemedicine
-# =================================================================================
 
 @router.get("/doctors", response_model=List[DoctorProfileResponse])
 def search_verified_doctors(
@@ -564,10 +552,6 @@ def sign_consultation_prescription(
     return session
 
 
-# =================================================================================
-# 3. HOME VISIT: Request, Emergency Guardrail, Dispatch & Tracking
-# =================================================================================
-
 @router.post("/home-visits", response_model=HomeVisitRequestResponse)
 def create_home_visit_request(
     visit_in: HomeVisitRequestCreate,
@@ -728,10 +712,6 @@ def update_home_visit_status(
 
     return visit_req
 
-
-# =================================================================================
-# 4. FIND A HOSPITAL: Capability Registry, Availability & Intelligent Search
-# =================================================================================
 
 CONDITION_CAPABILITY_MAP = {
     "obstetric": ["Emergency Obstetrics", "Obstetrician/Gynaecologist", "Operating Theatre", "Blood Transfusion"],
@@ -989,10 +969,6 @@ def update_hospital_availability(
         "reported_by": avail.reported_by
     }
 
-
-# =================================================================================
-# 5. EMERGENCY ASSISTANCE: Assessment, Capability Matching, Confirmation & Transport
-# =================================================================================
 
 @router.post("/emergency/requests", response_model=EmergencyRequestResponse)
 def initiate_emergency_request(
@@ -1289,10 +1265,6 @@ def update_emergency_request_status(
 
     return em_req
 
-
-# =================================================================================
-# 6. ADDITIONAL ARCHITECTURE CONTRACT ROUTES (Clinical AI Review, Records, Analytics)
-# =================================================================================
 
 @router.patch("/ai/analyses/{id}/review", response_model=ClinicalAIAnalysisResponse)
 def review_clinical_ai_analysis(

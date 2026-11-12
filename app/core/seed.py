@@ -23,7 +23,7 @@ def init_db_and_seed(db: Session):
 
     print("Seeding initial demo dataset...")
 
-    # 1. Facilities in Abeokuta, Ogun State
+    # Facilities in Abeokuta, Ogun State
     fac1 = Facility(
         name="Federal Medical Centre (FMC), Abeokuta",
         facility_code="FMC-ABK",
@@ -66,7 +66,7 @@ def init_db_and_seed(db: Session):
     db.add_all([fac1, fac2, fac3])
     db.commit()
 
-    # 2. Departments
+    # Departments
     for fac in [fac1, fac2, fac3]:
         for code, name in [
             ("RECEPTION", "Front Desk Reception"),
@@ -82,7 +82,7 @@ def init_db_and_seed(db: Session):
             ))
     db.commit()
 
-    # 3. Clinical Services
+    # Clinical Services
     srv_emergency = Service(service_code="EMERGENCY_CARE", service_name="Emergency Resuscitation & Trauma Care")
     srv_cardio = Service(service_code="CARDIOLOGY", service_name="Cardiology & ECG Evaluation")
     srv_lab = Service(service_code="DIAGNOSTIC_LAB", service_name="Clinical Pathology (FBC, Malaria RDT, Microscopy)")
@@ -108,7 +108,7 @@ def init_db_and_seed(db: Session):
     db.add(FacilityService(facility_id=fac3.id, service_id=srv_lab.id, availability_status="limited", last_confirmed_at=now, reported_by="Nurse Supervisor"))
     db.commit()
 
-    # 4. Hospital Staff Profiles (for FMC Abeokuta)
+    # Hospital Staff Profiles (for FMC Abeokuta)
     # Password for all demo accounts: "vitalis2026"
     pw_hash = get_password_hash("vitalis2026")
 
@@ -156,7 +156,7 @@ def init_db_and_seed(db: Session):
 
     db.commit()
 
-    # 5. Patient profile
+    # Patient profile
     u_pat = User(email="olumide@example.com", phone="+234-803-123-4567", password_hash=pw_hash, role=UserRole.PATIENT, full_name="Olumide Adeleke")
     db.add(u_pat)
     db.commit()

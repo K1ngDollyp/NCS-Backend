@@ -7,7 +7,7 @@ from app.models.models import (
     EmergencyRequestStatus, HomeVisitStatus
 )
 
-# ----------------- Auth & Users -----------------
+# Auth & Users
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -44,7 +44,7 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Facilities & Services -----------------
+# Facilities & Services
 class ServiceCreate(BaseModel):
     service_code: str
     service_name: str
@@ -89,7 +89,7 @@ class FacilitySuitabilityResult(BaseModel):
     score_breakdown: Dict[str, float]
     recommendation_rationale: str
 
-# ----------------- Patients -----------------
+# Patients
 class PatientCreate(BaseModel):
     first_name: str
     last_name: str
@@ -125,7 +125,7 @@ class PatientResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Family History -----------------
+# Family History
 class FamilyHistoryCreate(BaseModel):
     relationship_type: str
     condition: str
@@ -146,7 +146,7 @@ class FamilyHistoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Encounters & Hospital Workflow -----------------
+# Encounters & Hospital Workflow
 class EncounterCreate(BaseModel):
     patient_id: str
     facility_id: str
@@ -227,7 +227,7 @@ class ClinicalNoteResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Investigation Orders & Results -----------------
+# Investigation Orders & Results
 class InvestigationOrderCreate(BaseModel):
     department: OrderDepartment
     test_or_modality: str
@@ -286,7 +286,7 @@ class ConsolidatedEncounterResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Triage -----------------
+# Triage
 class SymptomInput(BaseModel):
     symptom: str
     duration_days: Optional[int] = 1
@@ -311,7 +311,7 @@ class TriageSessionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Referrals -----------------
+# Referrals
 class ReferralCreate(BaseModel):
     patient_id: str
     destination_facility_id: str
@@ -342,7 +342,7 @@ class ReferralResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ----------------- Consent & QR Grants -----------------
+# Consent & QR Grants
 class ConsentCreate(BaseModel):
     patient_id: str
     grantee_facility_id: Optional[str] = None
@@ -362,7 +362,7 @@ class QRRedeemRequest(BaseModel):
     token: str  # Raw token read from QR
     facility_id: str
 
-# ----------------- Inter-Hospital Transfer -----------------
+# Inter-Hospital Transfer
 class TransferCreate(BaseModel):
     patient_id: str
     recipient_facility_id: str
@@ -391,7 +391,7 @@ class TransferResponse(BaseModel):
 class TransferRedeemRequest(BaseModel):
     transfer_token: str
 
-# ----------------- Intelligence & Clinical Decision Support -----------------
+# Intelligence & Clinical Decision Support
 class MedicationSafetyCheckRequest(BaseModel):
     patient_id: str
     proposed_medications: List[str]
@@ -426,7 +426,7 @@ class InsightReviewRequest(BaseModel):
     rationale: Optional[str] = None
     edited_content: Optional[str] = None
 
-# ----------------- NCS ML Model Schemas -----------------
+# NCS ML Model Schemas
 class HeartDiseaseMLInput(BaseModel):
     age: int = Field(..., ge=1, le=120, description="Age in years")
     sex: int = Field(..., ge=0, le=1, description="1 = Male, 0 = Female")
@@ -464,9 +464,8 @@ class MLPredictionResponse(BaseModel):
     )
 
 
-# ----------------- VITALIS CareConnect & Clinical AI Schemas -----------------
-
-# 0. Patient Dashboard (5 Primary Actions)
+# VITALIS CareConnect & Clinical AI Schemas
+# Patient Dashboard (5 Primary Actions)
 class CareConnectActionItem(BaseModel):
     action_key: str
     title: str
@@ -484,7 +483,7 @@ class CareConnectDashboardResponse(BaseModel):
     upcoming_appointments_count: int = 0
     active_home_visit_id: Optional[str] = None
 
-# 1. CareConnect Assistant ("Talk to AI")
+# CareConnect Assistant ("Talk to AI")
 class AssistantConversationCreate(BaseModel):
     patient_id: str
     title: Optional[str] = "CareConnect Symptom Guidance"
@@ -526,7 +525,7 @@ class AssistantConversationResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# 2. Doctors, Availability, Appointments & Telemedicine ("Find a Doctor")
+# Doctors, Availability, Appointments & Telemedicine ("Find a Doctor")
 class DoctorAvailabilitySlotResponse(BaseModel):
     id: str
     day_of_week: str
@@ -625,7 +624,7 @@ class ConsultationSessionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# 3. Home Visits ("Home visit")
+# Home Visits ("Home visit")
 class HomeVisitRequestCreate(BaseModel):
     patient_id: str
     professional_type_needed: str = "Medical Doctor"
@@ -673,7 +672,7 @@ class HomeVisitRequestResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# 4. Hospital Capabilities & Intelligent Hospital Search ("Find a hospital")
+# Hospital Capabilities & Intelligent Hospital Search ("Find a hospital")
 class HospitalCapabilityUpdate(BaseModel):
     services: List[str]
     specialists: List[str]
@@ -707,7 +706,7 @@ class HospitalCapabilitySearchResult(BaseModel):
     score_breakdown: Dict[str, float]
     why_this_facility: str
 
-# 5. Emergency Referral & Coordination ("Emergency assistance")
+# Emergency Referral & Coordination ("Emergency assistance")
 class EmergencyRequestCreate(BaseModel):
     patient_id: str
     initiated_by_role: str = "patient"  # patient, relative, clinician
@@ -775,7 +774,7 @@ class EmergencyRequestResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# 6. Clinical AI & Patient Documents
+# Clinical AI & Patient Documents
 class PatientDocumentCreate(BaseModel):
     filename: str
     document_type: str = "lab_report"

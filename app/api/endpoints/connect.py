@@ -18,7 +18,7 @@ from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/connect", tags=["VITALIS CONNECT - Consent & Secure QR Access"])
 
-# ----------------- Create Scoped Consent & Generate QR Grant -----------------
+# Create Scoped Consent & Generate QR Grant
 @router.post("/qr-grants", response_model=QRGrantResponse)
 def create_qr_access_grant(
     consent_in: ConsentCreate,
@@ -83,7 +83,7 @@ def create_qr_access_grant(
         scope=consent_in.scope
     )
 
-# ----------------- Redeem QR Grant (Hospital Staff) -----------------
+# Redeem QR Grant (Hospital Staff)
 @router.post("/redeem")
 def redeem_qr_grant(
     redeem_in: QRRedeemRequest,
@@ -179,7 +179,7 @@ def redeem_qr_grant(
         "data": scoped_data
     }
 
-# ----------------- Revoke Consent -----------------
+# Revoke Consent
 @router.delete("/consents/{consent_id}")
 def revoke_consent(
     consent_id: str,

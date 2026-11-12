@@ -10,7 +10,7 @@ def get_token(identifier: str, password: str = "vitalis2026") -> str:
     assert res.status_code == 200, f"Login failed for {identifier}: {res.text}"
     return res.json()["access_token"]
 
-# 1. System Endpoints
+# System Endpoints
 def test_root_and_health():
     res = client.get("/")
     assert res.status_code == 200
@@ -20,7 +20,7 @@ def test_root_and_health():
     assert res_h.status_code == 200
     assert res_h.json()["status"] == "healthy"
 
-# 2. Auth Endpoints
+# Auth Endpoints
 def test_auth_registration_and_login():
     import random
     unique_email = f"tester_{random.randint(10000, 99999)}@example.com"
@@ -42,7 +42,7 @@ def test_auth_registration_and_login():
     assert login_res.status_code == 200
     assert "access_token" in login_res.json()
 
-# 3. Patient & Family History Endpoints
+# Patient & Family History Endpoints
 def test_patient_crud_and_family_history():
     doc_token = get_token("doctor@fmc.vitalis.ng")
     pat_token = get_token("olumide@example.com")
@@ -73,7 +73,7 @@ def test_patient_crud_and_family_history():
     assert fh_res.status_code == 200
     assert fh_res.json()["condition"] == "Sickle Cell Trait"
 
-# 4. Triage Endpoints
+# Triage Endpoints
 def test_triage_sessions():
     pat_token = get_token("olumide@example.com")
     pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
@@ -91,7 +91,7 @@ def test_triage_sessions():
     assert history.status_code == 200
     assert len(history.json()) > 0
 
-# 5. Facilities Endpoints
+# Facilities Endpoints
 def test_facilities_endpoints():
     res_all = client.get("/api/v1/facilities")
     assert res_all.status_code == 200
@@ -105,7 +105,7 @@ def test_facilities_endpoints():
     assert len(matches) > 0
     assert matches[0]["suitability_score"] > 0
 
-# 6. Centralized Hospital Workflow: Encounters, Observations, Notes, Orders
+# Centralized Hospital Workflow: Encounters, Observations, Notes, Orders
 def test_complete_encounter_workflow_and_queues():
     rec_token = get_token("reception@fmc.vitalis.ng")
     nurse_token = get_token("nurse@fmc.vitalis.ng")
@@ -115,7 +115,7 @@ def test_complete_encounter_workflow_and_queues():
     pat = client.get("/api/v1/patients/search?query=Olumide", headers={"Authorization": f"Bearer {rec_token}"}).json()[0]
     fac_id = client.get("/api/v1/facilities").json()[0]["id"]
 
-    # 1. POST /encounters (Reception)
+    # POST /encounters (Reception)
     enc = client.post("/api/v1/encounters", json={
         "patient_id": pat["id"],
         "facility_id": fac_id,
@@ -136,7 +136,7 @@ def test_complete_encounter_workflow_and_queues():
     assert n_queue.status_code == 200
     assert any(e["id"] == enc_id for e in n_queue.json())
 
-    # 2. POST /encounters/{id}/observations (Nursing)
+    # POST /encounters/{id}/observations (Nursing)
     obs_res = client.post(f"/api/v1/encounters/{enc_id}/observations", json={
         "observations": [
             {"observation_type": "systolic_bp", "value": 120.0, "unit": "mmHg"},
@@ -154,7 +154,7 @@ def test_complete_encounter_workflow_and_queues():
     assert d_queue.status_code == 200
     assert any(e["id"] == enc_id for e in d_queue.json())
 
-    # 3. POST /encounters/{id}/clinical-notes (Doctor)
+    # POST /encounters/{id}/clinical-notes (Doctor)
     note_res = client.post(f"/api/v1/encounters/{enc_id}/clinical-notes", json={
         "note_type": "consultation",
         "history_of_complaint": "Dry cough for 4 days, mild fatigue",
@@ -164,7 +164,7 @@ def test_complete_encounter_workflow_and_queues():
     }, headers={"Authorization": f"Bearer {doc_token}"})
     assert note_res.status_code == 200
 
-    # 4. POST /encounters/{id}/investigation-orders (Doctor orders Lab test)
+    # POST /encounters/{id}/investigation-orders (Doctor orders Lab test)
     order_res = client.post(f"/api/v1/encounters/{enc_id}/investigation-orders", json={
         "department": "laboratory",
         "test_or_modality": "Full Blood Count (FBC)",
@@ -173,7 +173,7 @@ def test_complete_encounter_workflow_and_queues():
     assert order_res.status_code == 200
     order_id = order_res.json()["investigation_orders"][0]["id"]
 
-    # 5. Diagnostic workflow
+    # Diagnostic workflow
     # GET /diagnostics/work-queue
     diag_queue = client.get("/api/v1/diagnostics/work-queue", headers={"Authorization": f"Bearer {lab_token}"})
     assert diag_queue.status_code == 200
@@ -196,7 +196,7 @@ def test_complete_encounter_workflow_and_queues():
     assert verify_res.status_code == 200
     assert verify_res.json()["status"] == "verified"
 
-# 7. Radiology Diagnostics Endpoints
+# Radiology Diagnostics Endpoints
 def test_radiology_workflow():
     doc_token = get_token("doctor@fmc.vitalis.ng")
     rad_token = get_token("rad@fmc.vitalis.ng")
@@ -227,7 +227,7 @@ def test_radiology_workflow():
     assert ver_res.status_code == 200
     assert ver_res.json()["status"] == "verified"
 
-# 8. Referrals Endpoints
+# Referrals Endpoints
 def test_referrals_lifecycle():
     doc_token = get_token("doctor@fmc.vitalis.ng")
     pat_token = get_token("olumide@example.com")
@@ -261,7 +261,7 @@ def test_referrals_lifecycle():
     assert patch_ref.status_code == 200
     assert patch_ref.json()["status"] == "accepted"
 
-# 9. Consent & QR Access Endpoints
+# Consent & QR Access Endpoints
 def test_connect_qr_and_consent_endpoints():
     pat_token = get_token("olumide@example.com")
     nurse_token = get_token("nurse@fmc.vitalis.ng")
@@ -286,7 +286,7 @@ def test_connect_qr_and_consent_endpoints():
     assert rev_res.status_code == 200
     assert rev_res.json()["status"] == "success"
 
-# 10. Intelligence & ML Model Endpoints
+# Intelligence & ML Model Endpoints
 def test_intelligence_and_ml_endpoints():
     doc_token = get_token("doctor@fmc.vitalis.ng")
     pat = client.get("/api/v1/patients/search?query=Olumide", headers={"Authorization": f"Bearer {doc_token}"}).json()[0]
@@ -327,7 +327,7 @@ def test_intelligence_and_ml_endpoints():
     assert diab_ml.status_code == 200
     assert diab_ml.json()["prediction"] in [0, 1]
 
-# 11. Transfers Endpoints
+# Transfers Endpoints
 def test_transfers_endpoints():
     doc_a = get_token("doctor@fmc.vitalis.ng")
     pat_token = get_token("olumide@example.com")
@@ -356,7 +356,7 @@ def test_transfers_endpoints():
     assert red_res.status_code == 200
     assert red_res.json()["status"] == "success"
 
-# 12. Admin Endpoints
+# Admin Endpoints
 def test_admin_endpoints():
     admin_token = get_token("admin@fmc.vitalis.ng")
 
@@ -373,7 +373,7 @@ def test_admin_endpoints():
     assert "encounters_overview" in data
 
 
-# 13. CareConnect: Central Patient Dashboard & 5 Primary Actions
+# CareConnect: Central Patient Dashboard & 5 Primary Actions
 def test_careconnect_dashboard_and_assistant():
     pat_token = get_token("olumide@example.com")
     pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
@@ -414,7 +414,7 @@ def test_careconnect_dashboard_and_assistant():
     assert updated_conv["recommended_next_action"] == "emergency_assistance"
 
 
-# 14. CareConnect Action 2: Find a Doctor, Booking & Telemedicine Consultation
+# CareConnect Action 2: Find a Doctor, Booking & Telemedicine Consultation
 def test_careconnect_doctors_appointments_and_telemedicine():
     pat_token = get_token("olumide@example.com")
     doc_token = get_token("doctor@fmc.vitalis.ng")
@@ -466,13 +466,13 @@ def test_careconnect_doctors_appointments_and_telemedicine():
     assert rx_res.json()["signed_prescription"] is not None
 
 
-# 15. CareConnect Action 3: Home Visit & Emergency Safety Redirect
+# CareConnect Action 3: Home Visit & Emergency Safety Redirect
 def test_careconnect_home_visits_and_emergency_redirect():
     pat_token = get_token("olumide@example.com")
     doc_token = get_token("doctor@statehospital.vitalis.ng")
     pid = client.get("/api/v1/patients/me", headers={"Authorization": f"Bearer {pat_token}"}).json()["id"]
 
-    # 1. Emergency symptom in home visit -> must redirect to emergency coordination, never routine home visit
+    # Emergency symptom in home visit -> must redirect to emergency coordination, never routine home visit
     em_visit = client.post("/api/v1/home-visits", json={
         "patient_id": pid,
         "professional_type_needed": "Medical Doctor",
@@ -485,7 +485,7 @@ def test_careconnect_home_visits_and_emergency_redirect():
     assert em_visit.json()["status"] == "redirected_to_emergency"
     assert em_visit.json()["urgency_flag"] is True
 
-    # 2. Routine home visit -> matched & confirmed with ETA
+    # Routine home visit -> matched & confirmed with ETA
     routine_visit = client.post("/api/v1/home-visits", json={
         "patient_id": pid,
         "professional_type_needed": "Medical Doctor",
@@ -514,7 +514,7 @@ def test_careconnect_home_visits_and_emergency_redirect():
     assert patch_rv.json()["status"] == "en_route"
 
 
-# 16. CareConnect Action 4 & 5: Intelligent Hospital Search & Emergency Coordination
+# CareConnect Action 4 & 5: Intelligent Hospital Search & Emergency Coordination
 def test_careconnect_hospital_capability_search_and_emergency_coordination():
     pat_token = get_token("olumide@example.com")
     admin_token = get_token("admin@fmc.vitalis.ng")
@@ -596,7 +596,7 @@ def test_careconnect_hospital_capability_search_and_emergency_coordination():
     assert st_res.json()["status"] == "arrived"
 
 
-# 17. Doctor Clinical AI Review & Document Upload Endpoints
+# Doctor Clinical AI Review & Document Upload Endpoints
 def test_clinical_ai_review_and_patient_documents():
     pat_token = get_token("olumide@example.com")
     doc_token = get_token("doctor@fmc.vitalis.ng")

@@ -51,7 +51,7 @@ def format_order(o: InvestigationOrder) -> InvestigationOrderResponse:
         } if o.radiology_report else None
     )
 
-# ----------------- Diagnostic Work Queue -----------------
+# Diagnostic Work Queue
 @router.get("/work-queue", response_model=List[InvestigationOrderResponse])
 def get_diagnostics_work_queue(
     department: Optional[OrderDepartment] = None,
@@ -80,7 +80,7 @@ def get_diagnostics_work_queue(
 
     return [format_order(o) for o in orders]
 
-# ----------------- Status Transitions -----------------
+# Status Transitions
 @router.patch("/orders/{id}/status", response_model=InvestigationOrderResponse)
 def update_order_status(
     id: str,
@@ -116,7 +116,7 @@ def update_order_status(
 
     return format_order(order)
 
-# ----------------- Enter Lab Result -----------------
+# Enter Lab Result
 @router.post("/orders/{id}/lab-results", response_model=InvestigationOrderResponse)
 def enter_lab_result(
     id: str,
@@ -163,7 +163,7 @@ def enter_lab_result(
 
     return format_order(order)
 
-# ----------------- Enter Radiology Report -----------------
+# Enter Radiology Report
 @router.post("/orders/{id}/radiology-reports", response_model=InvestigationOrderResponse)
 def enter_radiology_report(
     id: str,
@@ -213,7 +213,7 @@ def enter_radiology_report(
 
     return format_order(order)
 
-# ----------------- Verify Result (Authorized Role) -----------------
+# Verify Result (Authorized Role)
 @router.post("/orders/{id}/verify", response_model=InvestigationOrderResponse)
 def verify_diagnostic_result(
     id: str,

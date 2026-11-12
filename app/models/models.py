@@ -14,7 +14,7 @@ def generate_uuid() -> str:
 def get_utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-# ----------------- Enums -----------------
+# Enums
 class UserRole(str, enum.Enum):
     PATIENT = "patient"
     RECEPTION = "reception"
@@ -111,8 +111,7 @@ class HomeVisitStatus(str, enum.Enum):
     REDIRECTED_TO_EMERGENCY = "redirected_to_emergency"
     CANCELLED = "cancelled"
 
-# ----------------- Core Entities -----------------
-
+# Core Entities
 class User(Base):
     __tablename__ = "users"
 
@@ -554,8 +553,7 @@ class AuditEvent(Base):
     event_metadata = Column(JSON, default=dict)
 
 
-# ----------------- VITALIS CareConnect & Clinical AI Modules -----------------
-
+# VITALIS CareConnect & Clinical AI Modules
 class PatientDocument(Base):
     __tablename__ = "patient_documents"
 

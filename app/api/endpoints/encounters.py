@@ -87,7 +87,7 @@ def format_consolidated_encounter(enc: Encounter) -> ConsolidatedEncounterRespon
         investigation_orders=orders_data
     )
 
-# ----------------- 5.1 Reception: Open Encounter & Intake -----------------
+# Reception: Open Encounter & Intake
 @router.post("", response_model=ConsolidatedEncounterResponse)
 def open_encounter(
     encounter_in: EncounterCreate,
@@ -150,7 +150,7 @@ def open_encounter(
 
     return format_consolidated_encounter(new_encounter)
 
-# ----------------- Consolidated Encounter Lookup -----------------
+# Consolidated Encounter Lookup
 @router.get("/{id}", response_model=ConsolidatedEncounterResponse)
 def get_encounter_by_id(
     id: str,
@@ -178,7 +178,7 @@ def get_encounter_by_id(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.2 Nursing: Vital Signs & Warning Flags -----------------
+# Nursing: Vital Signs & Warning Flags
 @router.post("/{id}/observations", response_model=ConsolidatedEncounterResponse)
 def record_nursing_observations(
     id: str,
@@ -231,7 +231,7 @@ def record_nursing_observations(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.3 Doctor: Consultation Notes & AI-Assisted Review -----------------
+# Doctor: Consultation Notes & AI-Assisted Review
 @router.post("/{id}/clinical-notes", response_model=ConsolidatedEncounterResponse)
 def record_clinical_note(
     id: str,
@@ -285,7 +285,7 @@ def record_clinical_note(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- 5.3 Doctor: Order Investigations -----------------
+# Doctor: Order Investigations
 @router.post("/{id}/investigation-orders", response_model=ConsolidatedEncounterResponse)
 def place_investigation_order(
     id: str,
@@ -331,7 +331,7 @@ def place_investigation_order(
 
     return format_consolidated_encounter(encounter)
 
-# ----------------- Departmental Work Queues -----------------
+# Departmental Work Queues
 @router.get("/queue/{department}", response_model=List[ConsolidatedEncounterResponse])
 def get_department_work_queue(
     department: str,
@@ -375,7 +375,7 @@ def get_department_work_queue(
     return [format_consolidated_encounter(e) for e in encounters]
 
 
-# ----------------- Reception Intake Update on Existing Encounter -----------------
+# Reception Intake Update on Existing Encounter
 @router.post("/{id}/reception-intake", response_model=ConsolidatedEncounterResponse)
 def capture_or_update_reception_intake(
     id: str,
@@ -421,7 +421,7 @@ def capture_or_update_reception_intake(
     return format_consolidated_encounter(encounter)
 
 
-# ----------------- Doctor-Side VITALIS AI Clinical Assistant -----------------
+# Doctor-Side VITALIS AI Clinical Assistant
 @router.post("/{id}/ai/clinical-review", response_model=ClinicalAIAnalysisResponse)
 def run_clinical_ai_review(
     id: str,

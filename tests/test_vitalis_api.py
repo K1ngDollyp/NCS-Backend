@@ -54,9 +54,9 @@ def test_vitalis_route_facility_matching():
 
 def test_end_to_end_hospital_workflow():
     """
-    Test Section 5.5: Reception -> Nursing -> Doctor -> Laboratory -> Doctor review
+    End-to-end hospital flow: Reception -> Nursing -> Doctor -> Laboratory -> Doctor review
     """
-    # 1. Login as reception
+    # Login as staff across departments
     rec_token = get_auth_token("reception@fmc.vitalis.ng")
     nurse_token = get_auth_token("nurse@fmc.vitalis.ng")
     doc_token = get_auth_token("doctor@fmc.vitalis.ng")
@@ -74,7 +74,7 @@ def test_end_to_end_hospital_workflow():
     assert fac_res.status_code == 200
     facility_id = fac_res.json()[0]["id"]
 
-    # --- Step 1: Reception opens encounter ---
+    # Reception opens encounter
     enc_payload = {
         "patient_id": patient["id"],
         "facility_id": facility_id,
@@ -90,7 +90,7 @@ def test_end_to_end_hospital_workflow():
     enc_id = enc_data["id"]
     assert enc_data["status"] == "awaiting_nursing"
 
-    # --- Step 2: Nursing records vital signs ---
+    # Nursing records vital signs
     vitals_payload = {
         "observations": [
             {"observation_type": "temperature", "value": 39.4, "unit": "degC"},
@@ -110,14 +110,14 @@ def test_end_to_end_hospital_workflow():
     temp_obs = next(o for o in obs_data["nursing_observations"] if o["observation_type"] == "temperature")
     assert temp_obs["is_warning"] is True
 
-    # --- Step 3: Doctor runs Intelligence & Differential ---
+    # Doctor runs Intelligence & Differential
     diff_res = client.post(f"/api/v1/intelligence/encounters/{enc_id}/differential", headers={"Authorization": f"Bearer {doc_token}"})
     assert diff_res.status_code == 200
     diff_data = diff_res.json()
     assert "Malaria" in str(diff_data["possible_differentials"])
     assert diff_data["safety_disclaimer"] is not None
 
-    # --- Step 4: Doctor records clinical note & orders Lab test ---
+    # Doctor records clinical note & orders Lab test
     note_payload = {
         "note_type": "consultation",
         "history_of_complaint": "Acute febrile illness. Suspected severe Plasmodium falciparum malaria.",
@@ -142,7 +142,7 @@ def test_end_to_end_hospital_workflow():
     order_id = order_data["investigation_orders"][0]["id"]
     assert order_data["status"] == "awaiting_investigation"
 
-    # --- Step 5: Lab Tech enters & verifies result ---
+    # Lab Tech enters & verifies result
     lab_res_payload = {
         "specimen_type": "Whole Blood (EDTA)",
         "result_payload": {
@@ -185,7 +185,7 @@ def test_medication_safety_checker():
     assert len(data["allergy_conflicts"]) > 0
 
 def test_qr_grant_issuance_and_redemption():
-    """Verify single-use token, SHA-256 server storage, and redemption audit (Section 13)"""
+    """Verify single-use token, SHA-256 server storage, and redemption audit"""
     pat_token = get_auth_token("olumide@example.com")
     nurse_token = get_auth_token("nurse@fmc.vitalis.ng")
 
@@ -223,7 +223,7 @@ def test_qr_grant_issuance_and_redemption():
     assert fail_res.status_code == 403
 
 def test_inter_hospital_transfer_workflow():
-    """Verify Hospital A to Hospital B transfer package assembly, consent, and redemption (Section 32)"""
+    """Verify Hospital A to Hospital B transfer package assembly, consent, and redemption"""
     doc_a_token = get_auth_token("doctor@fmc.vitalis.ng")
     pat_token = get_auth_token("olumide@example.com")
     doc_b_token = get_auth_token("doctor@statehospital.vitalis.ng")
@@ -267,7 +267,7 @@ def test_ncs_model_integration_heart_and_diabetes():
     """Verify clean read-only integration of the NCS ML Model pipelines"""
     doc_token = get_auth_token("doctor@fmc.vitalis.ng")
 
-    # 1. Test Heart Disease Pipeline Endpoint
+    # Test Heart Disease Pipeline Endpoint
     heart_payload = {
         "age": 52,
         "sex": 1,
@@ -295,7 +295,7 @@ def test_ncs_model_integration_heart_and_diabetes():
     assert "NCS-RandomForestClassifier-HeartV1" in heart_data["model_version"]
     assert "safety_disclaimer" in heart_data
 
-    # 2. Test Diabetes Pipeline Endpoint
+    # Test Diabetes Pipeline Endpoint
     diabetes_payload = {
         "Pregnancies": 2,
         "Glucose": 148.0,

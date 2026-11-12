@@ -21,7 +21,7 @@ from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/intelligence", tags=["VITALIS INTELLIGENCE - Clinical Decision Support"])
 
-# ----------------- Medication Safety Check -----------------
+# Medication Safety Check
 @router.post("/medication-safety-check", response_model=MedicationSafetyCheckResponse)
 def check_medication_safety(
     check_in: MedicationSafetyCheckRequest,
@@ -59,7 +59,7 @@ def check_medication_safety(
         disclaimer=result["disclaimer"]
     )
 
-# ----------------- Differential Decision Support -----------------
+# Differential Decision Support
 @router.post("/encounters/{encounter_id}/differential", response_model=DifferentialResponse)
 def generate_encounter_differential(
     encounter_id: str,
@@ -122,7 +122,7 @@ def generate_encounter_differential(
         safety_disclaimer=analysis["safety_disclaimer"]
     )
 
-# ----------------- Clinician Review & Disposition of Findings -----------------
+# Clinician Review & Disposition of Findings
 @router.post("/insights/{id}/review")
 def review_clinical_insight(
     id: str,
@@ -165,7 +165,7 @@ def review_clinical_insight(
         "review_status": insight.review_status.value
     }
 
-# ----------------- NCS ML Model Dedicated Endpoints -----------------
+# NCS ML Model Dedicated Endpoints
 @router.post("/ml/predict-heart-disease", response_model=MLPredictionResponse)
 def predict_heart_disease_ml(
     input_data: HeartDiseaseMLInput,
