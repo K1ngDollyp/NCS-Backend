@@ -529,3 +529,32 @@ class AuditEvent(Base):
     timestamp = Column(DateTime(timezone=True), default=get_utc_now)
     event_metadata = Column(JSON, default=dict)
 
+
+
+class RecordAccessRequest(Base):
+    """
+    Patient-approved cross-facility record access (one-time code flow).
+    A facility requests access to a patient's network record; the patient
+    receives a 6-digit one-time code and shares it with the requesting staff.
+    Only the SHA-256 hash of the code is stored.
+    """
+    __tablename__ = "record_access_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False, index=True)
+    facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=False, index=True)
+    requested_by_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    purpose = Column(String(255), default="Clinical consultation & continuity of care")
+    otp_hash = Column(String(64), nullable=False)
+    demo_code = Column(String(6), nullable=True)  # Simulated SMS / app notification delivery (demo mode only)
+    status = Column(String(20), default="pending")  # pending, approved, expired, cancelled, locked
+    attempts = Column(Integer, default=0)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    consent_id = Column(String(36), ForeignKey("consents.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+    patient = relationship("Patient")
+    facility = relationship("Facility")
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    consent = relationship("Consent")

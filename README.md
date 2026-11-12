@@ -62,6 +62,20 @@ python -m uvicorn app.main:app --reload --port 8000
 
 ---
 
+### 5. Web App (Frontend)
+React + TypeScript + Vite + Tailwind, in [`frontend/`](frontend/). The dev server proxies `/api` to the backend on port 8000.
+```powershell
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
+**One-command demo:** `.\start-demo.ps1` resets the demo data, starts both servers and opens the browser. See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the presenter run sheet.
+
+**Demo story:** Folake Adewale (`VIT-2026-0002`, login `folake@example.com`) has history at State Hospital Sokenu and Chrisland Health Services and is seen at FMC Abeokuta for the first time: one-time-code consent, then nursing vitals, then VITALIS AI (cross-hospital allergy catch), then lab.
+
+---
+
 ## 👥 Demo Accounts (Password: `vitalis2026`)
 
 | Role | Identifier / Email | Facility | Department |

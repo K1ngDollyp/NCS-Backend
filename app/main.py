@@ -6,7 +6,7 @@ from app.core.database import engine, Base
 from app.api.endpoints import (
     auth, patients, encounters, diagnostics,
     triage, facilities, referrals, connect,
-    intelligence, transfers, admin
+    intelligence, transfers, admin, records
 )
 
 # Initialize database schema tables
@@ -33,6 +33,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def _startup():
+    # Free hosts wipe the disk on restart: seed the demo dataset if the database is empty
+    if settings.SEED_ON_STARTUP:
+        from app.core.database import SessionLocal
+        from app.core.seed import init_db_and_seed
+        db = SessionLocal()
+        try:
+            init_db_and_seed(db)
+        finally:
+            db.close()
+    if settings.ENABLE_NCS_ML_MODEL:
+        from app.services.ncs_model_adapter import warm_up_models
+        warm_up_models()
+
 # Root endpoint
 @app.get("/", tags=["System"])
 def root():
@@ -49,7 +64,8 @@ def root():
             "VITALIS HOSPITAL (Encounters & Workflow)",
             "VITALIS REFERRAL",
             "VITALIS INTELLIGENCE (Decision Support)",
-            "VITALIS TRANSFER (Inter-Hospital Exchange)"
+            "VITALIS TRANSFER (Inter-Hospital Exchange)",
+            "VITALIS NETWORK (Unified Patient Record)"
         ]
     }
 
@@ -69,4 +85,5 @@ app.include_router(connect.router, prefix=settings.API_V1_STR)
 app.include_router(intelligence.router, prefix=settings.API_V1_STR)
 app.include_router(transfers.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
+app.include_router(records.router, prefix=settings.API_V1_STR)
 

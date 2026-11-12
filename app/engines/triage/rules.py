@@ -120,7 +120,8 @@ VITAL_WARNING_THRESHOLDS = {
     "respiratory_rate": {"min": 12, "max": 22, "unit": "cpm", "label": "Respiratory Rate"},
     "temperature": {"min": 36.0, "max": 37.8, "unit": "degC", "label": "Body Temperature"},
     "spo2": {"min": 94, "max": 100, "unit": "%", "label": "Oxygen Saturation (SpO2)"},
-    "pain_score": {"min": 0, "max": 6, "unit": "/10", "label": "Pain Score"}
+    "pain_score": {"min": 0, "max": 6, "unit": "/10", "label": "Pain Score"},
+    "blood_glucose": {"min": 70, "max": 140, "unit": "mg/dL", "label": "Random Blood Glucose (POC)"}
 }
 
 def check_vital_warning(observation_type: str, value: float) -> Tuple[bool, Optional[str]]:

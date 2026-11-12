@@ -68,3 +68,8 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Frontend & tooling
+frontend/node_modules/
+frontend/dist/
+.playwright-mcp/

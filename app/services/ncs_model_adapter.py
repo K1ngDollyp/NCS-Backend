@@ -18,6 +18,15 @@ if "src.common.preprocessing_util" not in sys.modules:
     sys.modules["src.common"] = src_common
     sys.modules["src.common.preprocessing_util"] = src_util
 
+def _ordered_frame(model, input_data: Dict[str, Any]) -> pd.DataFrame:
+    """Build a single-row DataFrame in exactly the column order the pipeline was trained on."""
+    cols = list(getattr(model, "feature_names_in_", input_data.keys()))
+    missing = [c for c in cols if c not in input_data]
+    if missing:
+        raise ValueError(f"Missing model features: {missing}")
+    return pd.DataFrame([[input_data[c] for c in cols]], columns=cols)
+
+
 class NCSModelAdapter:
     """
     Adapter for trained ML risk prediction pipelines.
@@ -45,6 +54,10 @@ class NCSModelAdapter:
             pipeline_path = cls.get_model_dir() / "heart_disease_prediction_pipeline.joblib"
             if pipeline_path.exists():
                 cls._heart_pipeline = joblib.load(pipeline_path)
+                # Single-row inference is faster without process/thread fan-out
+                model = getattr(cls._heart_pipeline, "named_steps", {}).get("model")
+                if model is not None and hasattr(model, "n_jobs"):
+                    model.n_jobs = 1
             else:
                 raise FileNotFoundError(f"Heart disease model not found at {pipeline_path}")
         return cls._heart_pipeline
@@ -66,9 +79,9 @@ class NCSModelAdapter:
         age, sex, cp, trestbps, chol, fbs, restecg, thalach, exang, oldpeak, slope, ca, thal
         """
         model = cls.get_heart_pipeline()
-        df = pd.DataFrame([input_data])
-        prediction = int(model.predict(df)[0])
-        probability = float(model.predict_proba(df)[0][1])
+        df = _ordered_frame(model, input_data)
+        probability = float(model.predict_proba(df)[0][1])  # one pass; class 1 = risk
+        prediction = int(probability > 0.5)  # random forest predict == argmax of probabilities
 
         return {
             "prediction": prediction,
@@ -90,8 +103,8 @@ class NCSModelAdapter:
         Pregnancies, Glucose, BloodPressure, SkinThickness, Insulin, BMI, DiabetesPedigreeFunction, Age
         """
         model = cls.get_diabetes_pipeline()
-        df = pd.DataFrame([input_data])
-        prediction = int(model.predict(df)[0])
+        df = _ordered_frame(model, input_data)
+        prediction = int(model.predict(df)[0])  # SVC: decision function, not Platt probability
         probability = float(model.predict_proba(df)[0][1])
 
         return {
@@ -107,3 +120,12 @@ class NCSModelAdapter:
             )
         }
 
+
+
+def warm_up_models() -> None:
+    """Load both pipelines at server start so the first clinical request is fast."""
+    for loader in (NCSModelAdapter.get_heart_pipeline, NCSModelAdapter.get_diabetes_pipeline):
+        try:
+            loader()
+        except Exception as exc:  # models are optional for the rest of the API
+            print(f"[VITALIS] ML model warm-up skipped: {exc}")

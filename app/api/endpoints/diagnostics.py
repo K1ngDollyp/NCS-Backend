@@ -48,7 +48,12 @@ def format_order(o: InvestigationOrder) -> InvestigationOrderResponse:
             "reported_by": o.radiology_report.reported_by.full_name if o.radiology_report.reported_by else None,
             "verified_by": o.radiology_report.verified_by.full_name if o.radiology_report.verified_by else None,
             "verified_at": o.radiology_report.verified_at
-        } if o.radiology_report else None
+        } if o.radiology_report else None,
+        patient_id=o.encounter.patient_id if o.encounter else None,
+        patient_name=f"{o.encounter.patient.first_name} {o.encounter.patient.last_name}" if o.encounter and o.encounter.patient else None,
+        patient_number=o.encounter.patient.patient_number if o.encounter and o.encounter.patient else None,
+        facility_id=o.encounter.facility_id if o.encounter else None,
+        ordered_by=o.ordering_clinician.full_name if o.ordering_clinician else None,
     )
 
 # ----------------- Diagnostic Work Queue -----------------

@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     MODEL_PROVIDER: str = "ncs-ml-model"
     NCS_MODEL_DIR: str = "ml_model/model_dir"
     ENABLE_NCS_ML_MODEL: bool = True
+
+    # Demo mode: one-time access codes are also returned to the patient app (simulated SMS)
+    DEMO_MODE: bool = True
+    SEED_ON_STARTUP: bool = True
+    ACCESS_OTP_TTL_MINUTES: int = 10
+    ACCESS_CONSENT_HOURS: int = 24
     
     model_config = SettingsConfigDict(
         env_file=".env",
