@@ -11,6 +11,9 @@ const DEMO_PASSWORD = 'vitalis2026'
 
 interface Role { step?: number; email: string; role: string; person: string; place: string; icon: ReactNode }
 
+const HOME: Role[] = [
+  { email: 'folake@example.com', role: 'Patient’s phone', person: 'Folake Adewale', place: 'Checks symptoms, finds a hospital, shares her record', icon: <Smartphone /> },
+]
 const JOURNEY: Role[] = [
   { step: 1, email: 'reception@fmc.vitalis.ng', role: 'Reception', person: 'Amina Bello', place: 'Confirms referrals, checks patients in', icon: <ClipboardList /> },
   { step: 2, email: 'nurse@fmc.vitalis.ng', role: 'Nurse', person: 'Kehinde Adeyemi, RN', place: 'Records vital signs', icon: <HeartPulse /> },
@@ -18,8 +21,7 @@ const JOURNEY: Role[] = [
   { step: 4, email: 'lab@fmc.vitalis.ng', role: 'Laboratory', person: 'Chukwudi Okon', place: 'Sends verified results back', icon: <FlaskConical /> },
 ]
 const OTHER: Role[] = [
-  { email: 'folake@example.com', role: 'Patient’s phone', person: 'Folake Adewale', place: 'Checks symptoms, finds a hospital, shares records', icon: <Smartphone /> },
-  { email: 'admin@fmc.vitalis.ng', role: 'Medical director', person: 'FMC Abeokuta', place: 'Audit trail', icon: <LayoutDashboard /> },
+  { email: 'admin@fmc.vitalis.ng', role: 'Medical director', person: 'FMC Abeokuta', place: 'Who opened which record · reset demo data', icon: <LayoutDashboard /> },
 ]
 
 export default function Login() {
@@ -54,14 +56,14 @@ export default function Login() {
       key={d.email}
       onClick={() => go(d.email, DEMO_PASSWORD)}
       disabled={!!busy}
-      className="group flex w-full items-center gap-4 border-t border-slate-200 px-4 py-3 text-left transition-colors duration-150 first:border-t-0 hover:bg-slate-50 disabled:opacity-60"
+      className="group flex w-full items-center gap-4 border-t border-slate-200 px-4 py-2.5 text-left transition-colors duration-150 first:border-t-0 hover:bg-slate-50 disabled:opacity-60"
     >
       <span className={clsx('grid size-8 shrink-0 place-items-center rounded-full text-sm font-semibold', d.step ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600 [&>svg]:size-4')}>
         {d.step ?? d.icon}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-base font-semibold text-slate-900">{d.role} <span className="font-normal text-slate-500">· {d.person}</span></span>
-        <span className="block truncate text-sm text-slate-500">{d.place}</span>
+        <span className="block text-sm text-slate-500 sm:truncate">{d.place}</span>
       </span>
       {busy === d.email
         ? <span className="size-4 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
@@ -72,15 +74,15 @@ export default function Login() {
   return (
     <div className="flex min-h-full flex-col lg:flex-row">
       {/* The story */}
-      <section className="order-2 bg-brand-900 px-6 py-8 text-white sm:px-10 lg:order-1 lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:py-10">
-        <Logo light size="lg" />
-        <div className="mt-8 lg:mt-0">
-          <h1 className="max-w-md text-3xl font-semibold leading-tight sm:text-4xl">
-            Your medical history, available at any hospital you visit, with your permission.
+      <section className="order-2 bg-brand-900 px-6 py-8 text-white max-lg:flex-1 sm:px-10 lg:order-1 lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:gap-6 lg:py-8">
+        <div className="hidden lg:block"><Logo light size="lg" /></div>
+        <div className="lg:mt-0">
+          <h1 className="max-w-lg text-3xl font-semibold leading-tight xl:text-4xl">
+            The right hospital, the first time. Your whole history, with your permission.
           </h1>
           <p className="mt-4 max-w-md text-base leading-relaxed text-brand-100">
-            VITALIS links hospital records across Ogun State into one record per patient.
-            The patient approves each hospital with a one-time code, and doctors get decision support that reads the whole history.
+            Patients find a hospital that can actually treat them before they travel, and share their record from their phone.
+            Every hospital in the network sees one record per patient, and doctors get decision support that reads all of it.
           </p>
         </div>
 
@@ -88,21 +90,26 @@ export default function Login() {
           <div className="text-sm font-semibold text-brand-100">Today’s demo patient</div>
           <div className="mt-1 text-lg font-semibold">Folake Adewale, 54 · <span className="whitespace-nowrap font-mono text-base">VIT-2026-0002</span></div>
           <ul className="mt-3 space-y-1.5 text-sm text-brand-50">
-            <li className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-300" />Seen twice at State Hospital, Sokenu, then once at Chrisland Health Services</li>
-            <li className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-300" />Today she walks into FMC Abeokuta for the first time</li>
-            <li className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-300" />Her allergy was recorded at a hospital FMC has never worked with</li>
+            {[
+              'Treated for high blood pressure at State Hospital, Sokenu, and once at Chrisland',
+              'Today: headache and blurred vision, at home in Abeokuta',
+              'Her drug allergy is on file at a hospital FMC has never worked with',
+            ].map((t) => <li key={t} className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-300" />{t}</li>)}
           </ul>
         </div>
       </section>
 
       {/* Choose a role */}
-      <section className="order-1 flex flex-1 items-start justify-center bg-white lg:order-2 px-4 py-8 sm:px-10 lg:items-center lg:py-10">
+      <section className="order-1 flex flex-1 items-start justify-center bg-white px-4 py-8 sm:px-10 lg:order-2 lg:items-center lg:py-6">
         <div className="w-full max-w-lg">
           <div className="mb-6 lg:hidden"><Logo /></div>
-          <h2 className="text-2xl font-semibold text-slate-900">Choose a role to start</h2>
-          <p className="mt-1 text-base text-slate-500">Follow one patient through the hospital, in order.</p>
+          <h2 className="text-2xl font-semibold text-slate-900">Follow Folake’s day</h2>
+          <p className="mt-1 text-base text-slate-500">Choose who to be. Each role signs in with one click.</p>
 
-          <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">{JOURNEY.map(row)}</div>
+          <h3 className="mt-5 mb-1.5 text-sm font-semibold text-slate-600">At home</h3>
+          <div className="overflow-hidden rounded-lg border border-slate-200">{HOME.map(row)}</div>
+          <h3 className="mt-4 mb-1.5 text-sm font-semibold text-slate-600">At FMC Abeokuta</h3>
+          <div className="overflow-hidden rounded-lg border border-slate-200">{JOURNEY.map(row)}</div>
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">{OTHER.map(row)}</div>
 
           <ErrorNote message={showForm ? null : error} />
