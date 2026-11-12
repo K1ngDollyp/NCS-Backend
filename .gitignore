@@ -69,5 +69,7 @@ logs/
 tmp/
 temp/
 
-# Local-only README
+# Local-only files & docs
 README.md
+docs/
+scripts/
